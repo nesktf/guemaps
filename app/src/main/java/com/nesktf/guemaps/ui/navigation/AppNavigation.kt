@@ -1,0 +1,78 @@
+package com.nesktf.guemaps.ui.navigation
+
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nesktf.guemaps.ui.balance.BalanceScreen
+import com.nesktf.guemaps.ui.balance.BalanceViewModel
+import com.nesktf.guemaps.ui.map.MapScreen
+import com.nesktf.guemaps.ui.map.MapViewModel
+
+enum class AppDestination(val label: String) {
+    MAP("Mapa"),
+    BALANCE("Saldo")
+}
+
+@Composable
+fun AppNavigation(
+    modifier: Modifier = Modifier
+) {
+    var currentDestination by rememberSaveable { mutableStateOf(AppDestination.MAP) }
+
+    // Shared or scoped ViewModels
+    val mapViewModel: MapViewModel = viewModel()
+    val balanceViewModel: BalanceViewModel = viewModel()
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = currentDestination == AppDestination.MAP,
+                    onClick = { currentDestination = AppDestination.MAP },
+                    icon = {
+                        Icon(Icons.Default.Map, contentDescription = "Mapa")
+                    },
+                    label = { Text("Recorridos") }
+                )
+                NavigationBarItem(
+                    selected = currentDestination == AppDestination.BALANCE,
+                    onClick = { currentDestination = AppDestination.BALANCE },
+                    icon = {
+                        Icon(Icons.Default.CreditCard, contentDescription = "Saldo")
+                    },
+                    label = { Text("Saldo") }
+                )
+            }
+        },
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
+        when (currentDestination) {
+            AppDestination.MAP -> {
+                MapScreen(
+                    viewModel = mapViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+            AppDestination.BALANCE -> {
+                BalanceScreen(
+                    viewModel = balanceViewModel,
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+        }
+    }
+}

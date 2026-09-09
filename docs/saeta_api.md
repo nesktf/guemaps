@@ -81,9 +81,10 @@ type BusPosResponse = {
 
 ## Check card balance
 - BALANCE_URL: `${API_URL}/getSaldoCaptcha/${CARD_NUMBER}/${CAPTCHA_VALUE}`
-- CAPTCHA_URL: `https://saeta.miredbus.com.ar/captcha.png?time=${MSECS}`
+- CAPTCHA_URL: `https://salta.miredbus.com.ar/captcha.png?time=${MSECS}`
 - CAPTCHA_URL -> string
 - MSECS -> int
+- CARD_NUMBER -> int
 
 ```ts
 type CardBalance = {
