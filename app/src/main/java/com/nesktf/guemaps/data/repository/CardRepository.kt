@@ -30,4 +30,22 @@ class CardRepository(
     fun getRecentCards(): List<SavedCard> {
         return database.getRecentCards()
     }
+
+    fun getFavoriteCards(): List<SavedCard> {
+        return database.getFavoriteCards()
+    }
+
+    fun toggleFavoriteCard(cardNumber: String, alias: String? = null): Boolean {
+        return if (database.isFavoriteCard(cardNumber)) {
+            database.removeFavoriteCard(cardNumber)
+            false
+        } else {
+            database.addFavoriteCard(cardNumber, alias)
+            true
+        }
+    }
+
+    fun isFavoriteCard(cardNumber: String): Boolean {
+        return database.isFavoriteCard(cardNumber)
+    }
 }

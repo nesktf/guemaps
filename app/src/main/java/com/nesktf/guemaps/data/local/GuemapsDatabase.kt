@@ -7,6 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import com.google.gson.Gson
 import com.nesktf.guemaps.data.model.BusGroupsResponse
 import com.nesktf.guemaps.data.model.BusRouteResponse
+import com.nesktf.guemaps.data.model.FlatBusLine
 import com.nesktf.guemaps.data.model.SavedCard
 
 class GuemapsDatabase(
@@ -16,7 +17,7 @@ class GuemapsDatabase(
 
     companion object {
         const val DATABASE_NAME = "guemaps.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
 
         private const val TABLE_BUS_GROUPS = "bus_groups_cache"
         private const val COL_BG_ID = "id"
@@ -32,6 +33,22 @@ class GuemapsDatabase(
         private const val COL_RC_CARD_NUMBER = "card_number"
         private const val COL_RC_ALIAS = "alias"
         private const val COL_RC_LAST_CHECKED = "last_checked"
+
+        private const val TABLE_FAVORITE_LINES = "favorite_bus_lines"
+        private const val COL_FL_CODE = "cod_linea"
+        private const val COL_FL_DESC = "descripcion"
+        private const val COL_FL_PATH = "group_path"
+        private const val COL_FL_ADDED_AT = "added_at"
+
+        private const val TABLE_FAVORITE_CARDS = "favorite_cards"
+        private const val COL_FC_CARD_NUMBER = "card_number"
+        private const val COL_FC_ALIAS = "alias"
+        private const val COL_FC_ADDED_AT = "added_at"
+    }
+
+    override fun onOpen(db: SQLiteDatabase) {
+        super.onOpen(db)
+        onCreate(db)
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -64,12 +81,35 @@ class GuemapsDatabase(
             )
             """.trimIndent()
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_FAVORITE_LINES (
+                $COL_FL_CODE TEXT PRIMARY KEY,
+                $COL_FL_DESC TEXT NOT NULL,
+                $COL_FL_PATH TEXT NOT NULL,
+                $COL_FL_ADDED_AT INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_FAVORITE_CARDS (
+                $COL_FC_CARD_NUMBER TEXT PRIMARY KEY,
+                $COL_FC_ALIAS TEXT,
+                $COL_FC_ADDED_AT INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         db.execSQL("DROP TABLE IF EXISTS $TABLE_BUS_GROUPS")
         db.execSQL("DROP TABLE IF EXISTS $TABLE_BUS_ROUTES")
         db.execSQL("DROP TABLE IF EXISTS $TABLE_RECENT_CARDS")
+        db.execSQL("DROP TABLE IF EXISTS $TABLE_FAVORITE_LINES")
+        db.execSQL("DROP TABLE IF EXISTS $TABLE_FAVORITE_CARDS")
         onCreate(db)
     }
 
@@ -170,6 +210,121 @@ class GuemapsDatabase(
             null,
             "$COL_RC_LAST_CHECKED DESC",
             limit.toString()
+        )
+        val list = mutableListOf<SavedCard>()
+        cursor.use {
+            while (it.moveToNext()) {
+                list.add(
+                    SavedCard(
+                        cardNumber = it.getString(0),
+                        alias = if (it.isNull(1)) null else it.getString(1),
+                        lastChecked = it.getLong(2)
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    // --- Favorite Bus Lines ---
+
+    fun addFavoriteLine(line: FlatBusLine) {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_FL_CODE, line.codLinea)
+            put(COL_FL_DESC, line.descripcion)
+            put(COL_FL_PATH, line.groupPath)
+            put(COL_FL_ADDED_AT, System.currentTimeMillis())
+        }
+        db.insertWithOnConflict(TABLE_FAVORITE_LINES, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun removeFavoriteLine(lineCode: String) {
+        val db = writableDatabase
+        db.delete(TABLE_FAVORITE_LINES, "$COL_FL_CODE = ?", arrayOf(lineCode))
+    }
+
+    fun isFavoriteLine(lineCode: String): Boolean {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_FAVORITE_LINES,
+            arrayOf(COL_FL_CODE),
+            "$COL_FL_CODE = ?",
+            arrayOf(lineCode),
+            null,
+            null,
+            null
+        )
+        return cursor.use { it.moveToFirst() }
+    }
+
+    fun getFavoriteLines(): List<FlatBusLine> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_FAVORITE_LINES,
+            arrayOf(COL_FL_CODE, COL_FL_DESC, COL_FL_PATH),
+            null,
+            null,
+            null,
+            null,
+            "$COL_FL_ADDED_AT ASC"
+        )
+        val list = mutableListOf<FlatBusLine>()
+        cursor.use {
+            while (it.moveToNext()) {
+                list.add(
+                    FlatBusLine(
+                        codLinea = it.getString(0),
+                        descripcion = it.getString(1),
+                        groupPath = it.getString(2)
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    // --- Favorite Cards ---
+
+    fun addFavoriteCard(cardNumber: String, alias: String? = null) {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_FC_CARD_NUMBER, cardNumber)
+            put(COL_FC_ALIAS, alias)
+            put(COL_FC_ADDED_AT, System.currentTimeMillis())
+        }
+        db.insertWithOnConflict(TABLE_FAVORITE_CARDS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun removeFavoriteCard(cardNumber: String) {
+        val db = writableDatabase
+        db.delete(TABLE_FAVORITE_CARDS, "$COL_FC_CARD_NUMBER = ?", arrayOf(cardNumber))
+    }
+
+    fun isFavoriteCard(cardNumber: String): Boolean {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_FAVORITE_CARDS,
+            arrayOf(COL_FC_CARD_NUMBER),
+            "$COL_FC_CARD_NUMBER = ?",
+            arrayOf(cardNumber),
+            null,
+            null,
+            null
+        )
+        return cursor.use { it.moveToFirst() }
+    }
+
+    fun getFavoriteCards(): List<SavedCard> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_FAVORITE_CARDS,
+            arrayOf(COL_FC_CARD_NUMBER, COL_FC_ALIAS, COL_FC_ADDED_AT),
+            null,
+            null,
+            null,
+            null,
+            "$COL_FC_ADDED_AT ASC"
         )
         val list = mutableListOf<SavedCard>()
         cursor.use {

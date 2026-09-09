@@ -121,3 +121,37 @@ data class BusPos(
     @SerializedName("vehiculoRampa") val vehiculoRampa: Boolean = false,
     @SerializedName("vehiculoNoVisibles") val vehiculoNoVisibles: Boolean = false
 )
+
+data class BusLiveDetails(
+    val bus: BusPos,
+    val speedKmh: Double? = null,
+    val userNearestStopName: String? = null,
+    val distanceToUserStopMeters: Double? = null,
+    val nearestStopName: String? = null,
+    val distanceToNearestStopMeters: Double? = null
+) {
+    fun formatSpeed(): String {
+        return when {
+            speedKmh == null -> "Calculando..."
+            speedKmh < 3.0 -> "Detenido"
+            else -> "%.0f km/h".format(java.util.Locale.US, speedKmh)
+        }
+    }
+
+    fun formatUserStopDistance(): String {
+        return when {
+            distanceToUserStopMeters == null -> ""
+            distanceToUserStopMeters < 1000 -> "A %.0f m de tu parada".format(java.util.Locale.US, distanceToUserStopMeters)
+            else -> "A %.1f km de tu parada".format(java.util.Locale.US, distanceToUserStopMeters / 1000.0)
+        }
+    }
+
+    fun formatDistance(): String {
+        val dist = distanceToUserStopMeters ?: distanceToNearestStopMeters
+        return when {
+            dist == null -> ""
+            dist < 1000 -> "a %.0f m".format(java.util.Locale.US, dist)
+            else -> "a %.1f km".format(java.util.Locale.US, dist / 1000.0)
+        }
+    }
+}

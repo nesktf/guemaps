@@ -17,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.nesktf.guemaps.ui.about.AboutScreen
 import com.nesktf.guemaps.ui.balance.BalanceScreen
 import com.nesktf.guemaps.ui.balance.BalanceViewModel
 import com.nesktf.guemaps.ui.map.MapScreen
@@ -32,46 +33,53 @@ fun AppNavigation(
     modifier: Modifier = Modifier
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestination.MAP) }
+    var showAboutScreen by rememberSaveable { mutableStateOf(false) }
 
     // Shared or scoped ViewModels
     val mapViewModel: MapViewModel = viewModel()
     val balanceViewModel: BalanceViewModel = viewModel()
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = currentDestination == AppDestination.MAP,
-                    onClick = { currentDestination = AppDestination.MAP },
-                    icon = {
-                        Icon(Icons.Default.Map, contentDescription = "Mapa")
-                    },
-                    label = { Text("Recorridos") }
-                )
-                NavigationBarItem(
-                    selected = currentDestination == AppDestination.BALANCE,
-                    onClick = { currentDestination = AppDestination.BALANCE },
-                    icon = {
-                        Icon(Icons.Default.CreditCard, contentDescription = "Saldo")
-                    },
-                    label = { Text("Saldo") }
-                )
-            }
-        },
-        modifier = modifier.fillMaxSize()
-    ) { innerPadding ->
-        when (currentDestination) {
-            AppDestination.MAP -> {
-                MapScreen(
-                    viewModel = mapViewModel,
-                    modifier = Modifier.padding(innerPadding)
-                )
-            }
-            AppDestination.BALANCE -> {
-                BalanceScreen(
-                    viewModel = balanceViewModel,
-                    modifier = Modifier.padding(innerPadding)
-                )
+    if (showAboutScreen) {
+        AboutScreen(onBack = { showAboutScreen = false })
+    } else {
+        Scaffold(
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = currentDestination == AppDestination.MAP,
+                        onClick = { currentDestination = AppDestination.MAP },
+                        icon = {
+                            Icon(Icons.Default.Map, contentDescription = "Mapa")
+                        },
+                        label = { Text("Recorridos") }
+                    )
+                    NavigationBarItem(
+                        selected = currentDestination == AppDestination.BALANCE,
+                        onClick = { currentDestination = AppDestination.BALANCE },
+                        icon = {
+                            Icon(Icons.Default.CreditCard, contentDescription = "Saldo")
+                        },
+                        label = { Text("Saldo") }
+                    )
+                }
+            },
+            modifier = modifier.fillMaxSize()
+        ) { innerPadding ->
+            when (currentDestination) {
+                AppDestination.MAP -> {
+                    MapScreen(
+                        viewModel = mapViewModel,
+                        onOpenAbout = { showAboutScreen = true },
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+                AppDestination.BALANCE -> {
+                    BalanceScreen(
+                        viewModel = balanceViewModel,
+                        onOpenAbout = { showAboutScreen = true },
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
             }
         }
     }

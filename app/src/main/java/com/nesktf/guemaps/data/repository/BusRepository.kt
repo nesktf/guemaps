@@ -70,4 +70,22 @@ class BusRepository(
         val networkResult = apiClient.fetchActiveBuses(lineId)
         return networkResult.map { it.posiciones ?: emptyList() }
     }
+
+    fun getFavoriteLines(): List<FlatBusLine> {
+        return database.getFavoriteLines()
+    }
+
+    fun toggleFavoriteLine(line: FlatBusLine): Boolean {
+        return if (database.isFavoriteLine(line.codLinea)) {
+            database.removeFavoriteLine(line.codLinea)
+            false
+        } else {
+            database.addFavoriteLine(line)
+            true
+        }
+    }
+
+    fun isFavoriteLine(lineCode: String): Boolean {
+        return database.isFavoriteLine(lineCode)
+    }
 }

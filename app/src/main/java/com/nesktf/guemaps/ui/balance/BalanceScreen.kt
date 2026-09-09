@@ -24,8 +24,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,6 +57,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun BalanceScreen(
     viewModel: BalanceViewModel,
+    onOpenAbout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -69,17 +73,33 @@ fun BalanceScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Top Header
-        Text(
-            text = "Consulta de Saldo",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(top = 8.dp)
-        )
-        Text(
-            text = "Tarjeta de transporte SAETA",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Consulta de Saldo",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Tarjeta de transporte SAETA",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onOpenAbout) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Acerca de",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
 
         // Card Input Section
         Card(
@@ -98,6 +118,18 @@ fun BalanceScreen(
                     leadingIcon = {
                         Icon(Icons.Default.CreditCard, contentDescription = "Tarjeta")
                     },
+                    trailingIcon = {
+                        if (state.cardNumber.isNotBlank()) {
+                            val isFav = state.favoriteCardNumbers.contains(state.cardNumber)
+                            IconButton(onClick = { viewModel.toggleFavoriteCard(state.cardNumber) }) {
+                                Icon(
+                                    imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = if (isFav) "Quitar de favoritas" else "Guardar en favoritas",
+                                    tint = if (isFav) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
@@ -106,6 +138,46 @@ fun BalanceScreen(
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Favorite Cards Chips
+                if (state.favoriteCards.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Favoritas",
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Favoritas:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            state.favoriteCards.take(3).forEach { favCard ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.clickable {
+                                        viewModel.selectRecentCard(favCard.cardNumber)
+                                    }
+                                ) {
+                                    Text(
+                                        text = favCard.cardNumber,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Recent Cards Chips
                 if (state.recentCards.isNotEmpty()) {
@@ -210,7 +282,7 @@ fun BalanceScreen(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Ascii,
-                        capitalization = KeyboardCapitalization.Characters,
+                        capitalization = KeyboardCapitalization.None,
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(

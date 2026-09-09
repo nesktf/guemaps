@@ -23,7 +23,9 @@ data class BalanceUiState(
     val isCheckingBalance: Boolean = false,
     val balanceResponse: CardBalanceResponse? = null,
     val errorMessage: String? = null,
-    val recentCards: List<SavedCard> = emptyList()
+    val recentCards: List<SavedCard> = emptyList(),
+    val favoriteCards: List<SavedCard> = emptyList(),
+    val favoriteCardNumbers: Set<String> = emptySet()
 )
 
 class BalanceViewModel(application: Application) : AndroidViewModel(application) {
@@ -38,7 +40,27 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
         val apiClient = SaetaApiClient()
         repository = CardRepository(apiClient, database)
         loadRecentCards()
+        loadFavoriteCards()
         loadCaptcha()
+    }
+
+    fun loadFavoriteCards() {
+        viewModelScope.launch {
+            val favs = repository.getFavoriteCards()
+            _uiState.update {
+                it.copy(
+                    favoriteCards = favs,
+                    favoriteCardNumbers = favs.map { card -> card.cardNumber }.toSet()
+                )
+            }
+        }
+    }
+
+    fun toggleFavoriteCard(cardNumber: String, alias: String? = null) {
+        viewModelScope.launch {
+            repository.toggleFavoriteCard(cardNumber, alias)
+            loadFavoriteCards()
+        }
     }
 
     fun loadCaptcha() {
