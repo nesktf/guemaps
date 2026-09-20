@@ -92,7 +92,20 @@ data class FlatBusLine(
     val groupPath: String,
     val codLinea: String,
     val descripcion: String
-)
+) {
+    val nombreCorto: String
+        get() {
+            val parts = descripcion.split("-")
+            return if (parts.size > 1 && parts[0].trim().length <= 6) {
+                parts[0].trim()
+            } else {
+                descripcion.take(12)
+            }
+        }
+
+    val nombreLinea: String
+        get() = descripcion
+}
 
 data class BusRouteResponse(
     @SerializedName("error") val error: Int = 0,

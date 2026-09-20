@@ -2,6 +2,7 @@ package com.nesktf.guemaps.ui.map
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -34,6 +35,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CenterFocusStrong
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ExpandLess
@@ -126,11 +129,17 @@ fun MapScreen(
         }
     }
 
+    // Intercept back button when line picker bottom sheet is open
+    BackHandler(enabled = state.isLinePickerOpen) {
+        viewModel.setLinePickerOpen(false)
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         // Map View
         OsmMapView(
             routeNodes = state.routeNodes,
             activeBuses = state.activeBuses,
+            activeLines = state.activeLines.values.toList(),
             showStops = state.showStops,
             userLocation = state.userLocation,
             busLiveDetails = state.busLiveDetails,
@@ -180,55 +189,125 @@ fun MapScreen(
                 }
             }
 
-            // Line Selector Floating Card
+            // Line Selector Floating Card (Multi-line Support)
             Surface(
-                onClick = { viewModel.setLinePickerOpen(true) },
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 6.dp,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DirectionsBus,
-                        contentDescription = "Línea",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = state.selectedLine?.descripcion ?: "Seleccionar Línea",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setLinePickerOpen(true) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DirectionsBus,
+                            contentDescription = "Líneas",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp)
                         )
-                        Text(
-                            text = state.selectedLine?.groupPath ?: "Toque aquí para buscar o elegir línea",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (state.selectedLines.isEmpty()) "Seleccionar Líneas" else "Líneas Activas (${state.selectedLines.size}/8)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (state.selectedLines.isEmpty()) {
+                                Text(
+                                    text = "Toque aquí para agregar hasta 8 colectivos",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (state.isLoadingRoute) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.setLinePickerOpen(true) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Agregar línea",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
 
-                    if (state.isLoadingRoute) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp
-                        )
+                    // Display active line badges horizontally with colors and quick remove
+                    if (state.selectedLines.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(state.selectedLines, key = { it.codLinea }) { line ->
+                                val activeData = state.activeLines[line.codLinea]
+                                val colorInt = try {
+                                    android.graphics.Color.parseColor(activeData?.colorHex ?: "#35399D")
+                                } catch (_: Exception) {
+                                    android.graphics.Color.BLUE
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color(colorInt).copy(alpha = 0.15f),
+                                    border = BorderStroke(1.5.dp, Color(colorInt)),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(start = 10.dp, end = 4.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(colorInt))
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = line.nombreCorto,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        IconButton(
+                                            onClick = { viewModel.removeLine(line.codLinea) },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Quitar línea",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
         // Floating Popup on Top-Left Corner (Speed and User-Relative Stop Distance)
-        if (state.selectedLine != null && state.activeBuses.isNotEmpty()) {
+        if (state.selectedLines.isNotEmpty() && state.activeBuses.isNotEmpty()) {
             val focusedInterno = state.selectedBusInterno ?: state.activeBuses.firstOrNull()?.interno
             val liveDetail = focusedInterno?.let { state.busLiveDetails[it] }
 
@@ -481,7 +560,7 @@ fun MapScreen(
             }
 
             // Refresh Active Buses
-            if (state.selectedLine != null) {
+            if (state.selectedLines.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = { viewModel.refreshActiveBuses() },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -505,7 +584,7 @@ fun MapScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Active buses toast
-            if (state.selectedLine != null && !state.isLoadingRoute) {
+            if (state.selectedLines.isNotEmpty() && !state.isLoadingRoute) {
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
                     shape = RoundedCornerShape(20.dp),
@@ -517,16 +596,14 @@ fun MapScreen(
                     ) {
                         val totalBuses = state.activeBuses.size
                         val rampBuses = state.activeBuses.count { it.vehiculoRampa }
+                        val linesCount = state.selectedLines.size
                         Text(
                             text = when {
                                 state.isLoadingBuses -> "Actualizando posiciones..."
                                 state.busesErrorMessage != null -> state.busesErrorMessage ?: ""
-                                totalBuses == 0 -> "No hay colectivos activos en este momento"
-                                totalBuses == 1 -> {
-                                    if (rampBuses == 1) "1 colectivo activo (con rampa ♿)"
-                                    else "1 colectivo activo (sin rampa)"
-                                }
-                                else -> "$totalBuses colectivos activos ($rampBuses con rampa ♿)"
+                                totalBuses == 0 -> "No hay colectivos activos ($linesCount ${if (linesCount == 1) "línea" else "líneas"})"
+                                totalBuses == 1 -> "1 colectivo activo en $linesCount ${if (linesCount == 1) "línea" else "líneas"}${if (rampBuses == 1) " (con rampa ♿)" else ""}"
+                                else -> "$totalBuses colectivos activos en $linesCount ${if (linesCount == 1) "línea" else "líneas"} ($rampBuses con rampa ♿)"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -580,12 +657,48 @@ fun MapScreen(
                         .padding(horizontal = 16.dp)
                         .padding(bottom = 16.dp)
                 ) {
-                    Text(
-                        text = "Seleccionar Línea",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Seleccionar Líneas",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Surface(
+                            color = if (state.selectedLines.size >= 8) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "${state.selectedLines.size}/8 seleccionadas",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (state.selectedLines.size >= 8) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    if (state.errorMessage != null) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        ) {
+                            Text(
+                                text = state.errorMessage ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
 
                     // Search field
                     OutlinedTextField(
@@ -645,12 +758,15 @@ fun MapScreen(
                         ) {
                             items(state.filteredLines) { line ->
                                 val isFav = state.favoriteLineCodes.contains(line.codLinea)
+                                val isSelected = state.selectedLines.any { it.codLinea == line.codLinea }
+                                val colorHex = state.activeLines[line.codLinea]?.colorHex
                                 BusLineItem(
                                     line = line,
-                                    isSelected = state.selectedLine?.codLinea == line.codLinea,
+                                    isSelected = isSelected,
+                                    assignedColorHex = colorHex,
                                     isFavorite = isFav,
                                     onToggleFavorite = { viewModel.toggleFavoriteLine(line) },
-                                    onClick = { viewModel.selectLine(line) }
+                                    onClick = { viewModel.toggleLineSelection(line) }
                                 )
                             }
                         }
@@ -716,12 +832,15 @@ fun MapScreen(
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 items(state.favoriteLines, key = { "fav_${it.codLinea}" }) { line ->
+                                    val isSelected = state.selectedLines.any { it.codLinea == line.codLinea }
+                                    val colorHex = state.activeLines[line.codLinea]?.colorHex
                                     BusLineItem(
                                         line = line,
-                                        isSelected = state.selectedLine?.codLinea == line.codLinea,
+                                        isSelected = isSelected,
+                                        assignedColorHex = colorHex,
                                         isFavorite = true,
                                         onToggleFavorite = { viewModel.toggleFavoriteLine(line) },
-                                        onClick = { viewModel.selectLine(line) }
+                                        onClick = { viewModel.toggleLineSelection(line) }
                                     )
                                 }
                             }
@@ -758,12 +877,15 @@ fun MapScreen(
                                                 descripcion = entry.descripcion
                                             )
                                             val isFav = state.favoriteLineCodes.contains(flatLine.codLinea)
+                                            val isSelected = state.selectedLines.any { it.codLinea == flatLine.codLinea }
+                                            val colorHex = state.activeLines[flatLine.codLinea]?.colorHex
                                             BusLineItem(
                                                 line = flatLine,
-                                                isSelected = state.selectedLine?.codLinea == flatLine.codLinea,
+                                                isSelected = isSelected,
+                                                assignedColorHex = colorHex,
                                                 isFavorite = isFav,
                                                 onToggleFavorite = { viewModel.toggleFavoriteLine(flatLine) },
-                                                onClick = { viewModel.selectLine(flatLine) }
+                                                onClick = { viewModel.toggleLineSelection(flatLine) }
                                             )
                                         }
                                     }
@@ -790,12 +912,15 @@ fun MapScreen(
                                                     descripcion = entry.descripcion
                                                 )
                                                 val isFav = state.favoriteLineCodes.contains(flatLine.codLinea)
+                                                val isSelected = state.selectedLines.any { it.codLinea == flatLine.codLinea }
+                                                val colorHex = state.activeLines[flatLine.codLinea]?.colorHex
                                                 BusLineItem(
                                                     line = flatLine,
-                                                    isSelected = state.selectedLine?.codLinea == flatLine.codLinea,
+                                                    isSelected = isSelected,
+                                                    assignedColorHex = colorHex,
                                                     isFavorite = isFav,
                                                     onToggleFavorite = { viewModel.toggleFavoriteLine(flatLine) },
-                                                    onClick = { viewModel.selectLine(flatLine) },
+                                                    onClick = { viewModel.toggleLineSelection(flatLine) },
                                                     modifier = Modifier.padding(start = 8.dp)
                                                 )
                                             }
@@ -868,14 +993,26 @@ fun SubgroupSectionHeader(
 fun BusLineItem(
     line: FlatBusLine,
     isSelected: Boolean,
+    assignedColorHex: String? = null,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val lineAccentColor = if (assignedColorHex != null) {
+        try {
+            Color(android.graphics.Color.parseColor(assignedColorHex))
+        } catch (_: Exception) {
+            MaterialTheme.colorScheme.primary
+        }
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+
     Surface(
-        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        color = if (isSelected) lineAccentColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         shape = RoundedCornerShape(12.dp),
+        border = if (isSelected) BorderStroke(1.5.dp, lineAccentColor) else null,
         modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() }
@@ -886,17 +1023,17 @@ fun BusLineItem(
         ) {
             Box(
                 modifier = Modifier
-                    .size(34.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(
-                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                        if (isSelected) lineAccentColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.DirectionsBus,
+                    imageVector = if (isSelected) Icons.Default.Check else Icons.Default.DirectionsBus,
                     contentDescription = null,
-                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -904,12 +1041,24 @@ fun BusLineItem(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = line.descripcion,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = line.descripcion,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isSelected && assignedColorHex != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .background(lineAccentColor)
+                        )
+                    }
+                }
                 Text(
                     text = "${line.groupPath} • Línea ${line.codLinea}",
                     style = MaterialTheme.typography.bodySmall,

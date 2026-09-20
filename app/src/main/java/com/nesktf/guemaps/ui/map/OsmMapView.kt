@@ -33,8 +33,12 @@ import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import android.location.Location
+import android.view.MotionEvent
+import android.widget.Toast
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.FolderOverlay
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 
@@ -47,8 +51,9 @@ class MapActions {
 
 @Composable
 fun OsmMapView(
-    routeNodes: List<BusNode>,
-    activeBuses: List<BusPos>,
+    routeNodes: List<BusNode> = emptyList(),
+    activeBuses: List<BusPos> = emptyList(),
+    activeLines: List<ActiveLineData> = emptyList(),
     showStops: Boolean,
     userLocation: Location? = null,
     busLiveDetails: Map<String, BusLiveDetails> = emptyMap(),
@@ -86,6 +91,11 @@ fun OsmMapView(
         }
     }
 
+    val routesFolder = remember { FolderOverlay() }
+    val fastStopsOverlay = remember { FastStopsOverlay(context) }
+    val userLocationFolder = remember { FolderOverlay() }
+    val busesFolder = remember { FolderOverlay() }
+
     val mapView = remember {
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
@@ -100,6 +110,12 @@ fun OsmMapView(
             setScrollableAreaLimitDouble(saltaBounds)
             minZoomLevel = 8.0
             maxZoomLevel = 19.0
+
+            // Add persistent overlay layers in bottom-to-top rendering order
+            overlays.add(routesFolder)
+            overlays.add(fastStopsOverlay)
+            overlays.add(userLocationFolder)
+            overlays.add(busesFolder)
 
             addMapListener(object : MapListener {
                 override fun onScroll(event: ScrollEvent?): Boolean {
@@ -150,7 +166,7 @@ fun OsmMapView(
     }
 
     // Connect mapActions to this MapView instance
-    LaunchedEffect(mapActions, routeNodes) {
+    LaunchedEffect(mapActions, routeNodes, activeLines) {
         mapActions.zoomIn = {
             val target = (Math.floor(mapView.zoomLevelDouble) + 1.0).coerceAtMost(19.0)
             zoomAnimator.animate(mapView, target, 200L)
@@ -160,8 +176,9 @@ fun OsmMapView(
             zoomAnimator.animate(mapView, target, 200L)
         }
         mapActions.resetMap = {
-            if (routeNodes.size > 1) {
-                val geoPoints = routeNodes.map { GeoPoint(it.latitud, it.longitud) }
+            val allNodes = if (activeLines.isNotEmpty()) activeLines.flatMap { it.routeNodes } else routeNodes
+            if (allNodes.size > 1) {
+                val geoPoints = allNodes.map { GeoPoint(it.latitud, it.longitud) }
                 try {
                     val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
                     mapView.zoomToBoundingBox(boundingBox, false, 120)
@@ -201,50 +218,50 @@ fun OsmMapView(
         }
     }
 
-    // Update map overlays when routeNodes, activeBuses, showStops, or userLocation change
-    LaunchedEffect(routeNodes, activeBuses, showStops, userLocation, busLiveDetails) {
-        mapView.overlays.clear()
-
-        // 1. Draw Route Polyline
-        if (routeNodes.isNotEmpty()) {
+    // 1. Route polylines layer: ONLY updated when activeLines or routeNodes change
+    LaunchedEffect(activeLines, routeNodes) {
+        routesFolder.items.clear()
+        if (activeLines.isNotEmpty()) {
+            activeLines.forEach { lineData ->
+                if (lineData.routeNodes.isNotEmpty()) {
+                    val geoPoints = lineData.routeNodes.map { GeoPoint(it.latitud, it.longitud) }
+                    val polyline = Polyline(mapView).apply {
+                        outlinePaint.color = try { Color.parseColor(lineData.colorHex) } catch (_: Exception) { Color.parseColor("#35399D") }
+                        outlinePaint.strokeWidth = 11f
+                        outlinePaint.strokeCap = Paint.Cap.ROUND
+                        outlinePaint.strokeJoin = Paint.Join.ROUND
+                        outlinePaint.isAntiAlias = true
+                        isGeodesic = false
+                        setPoints(geoPoints)
+                    }
+                    routesFolder.add(polyline)
+                }
+            }
+        } else if (routeNodes.isNotEmpty()) {
             val geoPoints = routeNodes.map { GeoPoint(it.latitud, it.longitud) }
             val polyline = Polyline(mapView).apply {
-                outlinePaint.color = Color.parseColor("#2563EB") // Vibrant Indigo/Blue
-                outlinePaint.strokeWidth = 12f
+                outlinePaint.color = Color.parseColor("#35399D")
+                outlinePaint.strokeWidth = 11f
                 outlinePaint.strokeCap = Paint.Cap.ROUND
                 outlinePaint.strokeJoin = Paint.Join.ROUND
                 outlinePaint.isAntiAlias = true
+                isGeodesic = false
                 setPoints(geoPoints)
             }
-            mapView.overlays.add(polyline)
-
-            // 2. Draw Bus Stops
-            if (showStops) {
-                val stopDrawable = getCachedStopMarkerDrawable(context)
-                routeNodes.filter { it.parada }.forEach { stop ->
-                    val titleText = stop.descripcionParada?.takeIf { it.isNotBlank() }
-                    val snippetText = stop.codigoParada?.takeIf { it.isNotBlank() }?.let { "Código: $it" }
-
-                    val marker = Marker(mapView).apply {
-                        position = GeoPoint(stop.latitud, stop.longitud)
-                        icon = stopDrawable
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-
-                        if (titleText != null || snippetText != null) {
-                            title = titleText ?: "Parada de colectivo"
-                            snippet = snippetText
-                        } else {
-                            // Disable popup if no information is available on this node!
-                            infoWindow = null
-                            setOnMarkerClickListener { _, _ -> true }
-                        }
-                    }
-                    mapView.overlays.add(marker)
-                }
-            }
+            routesFolder.add(polyline)
         }
+        mapView.invalidate()
+    }
 
-        // 3. User Location Marker (Fixed directly to map coordinates, cannot move with screen panning!)
+    // 2. High-performance stops layer: single custom overlay with viewport culling
+    LaunchedEffect(activeLines, routeNodes, showStops) {
+        fastStopsOverlay.updateData(activeLines, showStops, fallback = routeNodes)
+        mapView.invalidate()
+    }
+
+    // 3. User location layer: ONLY updated when userLocation changes
+    LaunchedEffect(userLocation) {
+        userLocationFolder.items.clear()
         if (userLocation != null) {
             if (userLocation.hasAccuracy() && userLocation.accuracy > 0f) {
                 val accuracyCircle = Polygon(mapView).apply {
@@ -258,7 +275,7 @@ fun OsmMapView(
                     outlinePaint.strokeWidth = 2f
                     outlinePaint.style = Paint.Style.STROKE
                 }
-                mapView.overlays.add(accuracyCircle)
+                userLocationFolder.add(accuracyCircle)
             }
 
             val userDrawable = BitmapDrawable(context.resources, createPersonLocationBitmap(context))
@@ -269,39 +286,71 @@ fun OsmMapView(
                 title = "Tu ubicación"
                 snippet = if (userLocation.hasAccuracy()) "Precisión: ±%.0fm".format(userLocation.accuracy) else null
             }
-            mapView.overlays.add(userMarker)
+            userLocationFolder.add(userMarker)
         }
+        mapView.invalidate()
+    }
 
-        // 4. Draw Active Buses with Pretty Bus SVG/Vector Icon
-        activeBuses.forEach { bus ->
-            val busDrawable = createPrettyBusMarkerDrawable(
-                context = context,
-                busNumber = bus.interno,
-                hasRamp = bus.vehiculoRampa
-            )
+    // 4. Live buses layer: updated when activeBuses change (does NOT re-create routes or stops!)
+    LaunchedEffect(activeLines, activeBuses) {
+        busesFolder.items.clear()
+        if (activeLines.isNotEmpty()) {
+            activeLines.forEach { lineData ->
+                lineData.activeBuses.forEach { bus ->
+                    val busDrawable = createPrettyBusMarkerDrawable(
+                        context = context,
+                        busNumber = bus.interno,
+                        hasRamp = bus.vehiculoRampa,
+                        colorHex = lineData.colorHex
+                    )
 
-            val marker = Marker(mapView).apply {
-                position = GeoPoint(bus.latitud, bus.longitud)
-                icon = busDrawable
-                setAnchor(Marker.ANCHOR_CENTER, 0.85f)
-                title = "Colectivo #${bus.interno}"
-                snippet = if (bus.vehiculoRampa) "♿ Accesible con rampa" else null
-                setOnMarkerClickListener { m, _ ->
-                    onBusSelected(bus.interno)
-                    m.showInfoWindow()
-                    true
+                    val marker = Marker(mapView).apply {
+                        position = GeoPoint(bus.latitud, bus.longitud)
+                        icon = busDrawable
+                        setAnchor(Marker.ANCHOR_CENTER, 0.85f)
+                        title = "Línea ${lineData.line.nombreCorto} - Coche #${bus.interno}"
+                        snippet = if (bus.vehiculoRampa) "♿ Accesible con rampa" else lineData.line.nombreLinea
+                        setOnMarkerClickListener { m, _ ->
+                            onBusSelected(bus.interno)
+                            m.showInfoWindow()
+                            true
+                        }
+                    }
+                    busesFolder.add(marker)
                 }
             }
-            mapView.overlays.add(marker)
-        }
+        } else {
+            activeBuses.forEach { bus ->
+                val busDrawable = createPrettyBusMarkerDrawable(
+                    context = context,
+                    busNumber = bus.interno,
+                    hasRamp = bus.vehiculoRampa,
+                    colorHex = "#35399D"
+                )
 
+                val marker = Marker(mapView).apply {
+                    position = GeoPoint(bus.latitud, bus.longitud)
+                    icon = busDrawable
+                    setAnchor(Marker.ANCHOR_CENTER, 0.85f)
+                    title = "Colectivo #${bus.interno}"
+                    snippet = if (bus.vehiculoRampa) "♿ Accesible con rampa" else null
+                    setOnMarkerClickListener { m, _ ->
+                        onBusSelected(bus.interno)
+                        m.showInfoWindow()
+                        true
+                    }
+                }
+                busesFolder.add(marker)
+            }
+        }
         mapView.invalidate()
     }
 
     // Auto-fit bounds ONLY when selecting a new line
-    LaunchedEffect(routeNodes, shouldFitRouteBounds) {
-        if (shouldFitRouteBounds && routeNodes.size > 1) {
-            val geoPoints = routeNodes.map { GeoPoint(it.latitud, it.longitud) }
+    LaunchedEffect(routeNodes, activeLines, shouldFitRouteBounds) {
+        val allNodes = if (activeLines.isNotEmpty()) activeLines.flatMap { it.routeNodes } else routeNodes
+        if (shouldFitRouteBounds && allNodes.size > 1) {
+            val geoPoints = allNodes.map { GeoPoint(it.latitud, it.longitud) }
             try {
                 val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
                 mapView.post {
@@ -324,10 +373,137 @@ fun OsmMapView(
 
 // Marker Cache and Generators
 
-private var cachedStopDrawable: BitmapDrawable? = null
+class FastStopsOverlay(
+    private val context: Context
+) : Overlay() {
+    private var activeLines: List<ActiveLineData> = emptyList()
+    private var fallbackNodes: List<BusNode> = emptyList()
+    private var showStops: Boolean = true
 
-private fun getCachedStopMarkerDrawable(context: Context): BitmapDrawable {
-    cachedStopDrawable?.let { return it }
+    private val screenPoint = android.graphics.Point()
+    private val clickPoint = android.graphics.Point()
+    private val density = context.resources.displayMetrics.density
+    private val stopRadius = 6.5f * density
+    private val borderStroke = 2.0f * density
+
+    private val fillPaints = mutableMapOf<String, Paint>()
+    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = borderStroke
+    }
+
+    fun updateData(lines: List<ActiveLineData>, show: Boolean, fallback: List<BusNode> = emptyList()) {
+        this.activeLines = lines
+        this.showStops = show
+        this.fallbackNodes = fallback
+    }
+
+    private fun getFillPaint(colorHex: String): Paint {
+        return fillPaints.getOrPut(colorHex) {
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = try { Color.parseColor(colorHex) } catch (_: Exception) { Color.parseColor("#35399D") }
+                style = Paint.Style.FILL
+            }
+        }
+    }
+
+    override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+        if (shadow || !showStops) return
+
+        // At zoom levels below 13.0, stops are too dense and obscure the streets
+        val zoom = mapView.zoomLevelDouble
+        if (zoom < 13.0) return
+
+        val projection = mapView.projection ?: return
+        val mapBounds = mapView.boundingBox ?: return
+
+        // 10% viewport margin for smooth edge panning
+        val latMargin = (mapBounds.latNorth - mapBounds.latSouth) * 0.1
+        val lonMargin = (mapBounds.lonEast - mapBounds.lonWest) * 0.1
+        val minLat = mapBounds.latSouth - latMargin
+        val maxLat = mapBounds.latNorth + latMargin
+        val minLon = mapBounds.lonWest - lonMargin
+        val maxLon = mapBounds.lonEast + lonMargin
+
+        if (activeLines.isNotEmpty()) {
+            for (lineData in activeLines) {
+                val fillPaint = getFillPaint(lineData.colorHex)
+                val nodes = lineData.routeNodes
+                for (i in nodes.indices) {
+                    val node = nodes[i]
+                    if (!node.parada) continue
+
+                    val lat = node.latitud
+                    val lon = node.longitud
+                    if (lat < minLat || lat > maxLat || lon < minLon || lon > maxLon) continue
+
+                    projection.toPixels(GeoPoint(lat, lon), screenPoint)
+                    canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, fillPaint)
+                    canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, borderPaint)
+                }
+            }
+        } else if (fallbackNodes.isNotEmpty()) {
+            val fillPaint = getFillPaint("#35399D")
+            for (i in fallbackNodes.indices) {
+                val node = fallbackNodes[i]
+                if (!node.parada) continue
+
+                val lat = node.latitud
+                val lon = node.longitud
+                if (lat < minLat || lat > maxLat || lon < minLon || lon > maxLon) continue
+
+                projection.toPixels(GeoPoint(lat, lon), screenPoint)
+                canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, fillPaint)
+                canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, borderPaint)
+            }
+        }
+    }
+
+    override fun onSingleTapConfirmed(e: MotionEvent, mapView: MapView): Boolean {
+        if (!showStops || mapView.zoomLevelDouble < 13.0) return false
+        val projection = mapView.projection ?: return false
+        val touchX = e.x
+        val touchY = e.y
+        val touchRadiusSq = (26f * density) * (26f * density) // 26dp touch radius
+
+        if (activeLines.isNotEmpty()) {
+            for (lineData in activeLines) {
+                for (node in lineData.routeNodes) {
+                    if (!node.parada) continue
+                    projection.toPixels(GeoPoint(node.latitud, node.longitud), clickPoint)
+                    val dx = clickPoint.x - touchX
+                    val dy = clickPoint.y - touchY
+                    if (dx * dx + dy * dy <= touchRadiusSq) {
+                        val stopName = node.descripcionParada?.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
+                        val code = node.codigoParada?.takeIf { it.isNotBlank() }?.let { " (Código: $it)" } ?: ""
+                        Toast.makeText(context, "$stopName$code\nLínea ${lineData.line.nombreCorto}", Toast.LENGTH_SHORT).show()
+                        return true
+                    }
+                }
+            }
+        } else if (fallbackNodes.isNotEmpty()) {
+            for (node in fallbackNodes) {
+                if (!node.parada) continue
+                projection.toPixels(GeoPoint(node.latitud, node.longitud), clickPoint)
+                val dx = clickPoint.x - touchX
+                val dy = clickPoint.y - touchY
+                if (dx * dx + dy * dy <= touchRadiusSq) {
+                    val stopName = node.descripcionParada?.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
+                    val code = node.codigoParada?.takeIf { it.isNotBlank() }?.let { " (Código: $it)" } ?: ""
+                    Toast.makeText(context, "$stopName$code", Toast.LENGTH_SHORT).show()
+                    return true
+                }
+            }
+        }
+        return false
+    }
+}
+
+private val stopDrawableCache = mutableMapOf<String, BitmapDrawable>()
+
+private fun getCachedStopMarkerDrawable(context: Context, colorHex: String = "#35399D"): BitmapDrawable {
+    stopDrawableCache[colorHex]?.let { return it }
 
     val density = context.resources.displayMetrics.density
     val size = (14 * density).toInt()
@@ -339,11 +515,11 @@ private fun getCachedStopMarkerDrawable(context: Context): BitmapDrawable {
         style = Paint.Style.FILL
     }
     val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#0284C7") // Cyan/Blue
+        color = try { Color.parseColor(colorHex) } catch (_: Exception) { Color.parseColor("#35399D") }
         style = Paint.Style.FILL
     }
     val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#0369A1")
+        color = Color.WHITE
         style = Paint.Style.STROKE
         strokeWidth = 2 * density
     }
@@ -354,15 +530,21 @@ private fun getCachedStopMarkerDrawable(context: Context): BitmapDrawable {
     canvas.drawCircle(radius, radius, radius - (1 * density), borderPaint)
 
     val drawable = BitmapDrawable(context.resources, bitmap)
-    cachedStopDrawable = drawable
+    stopDrawableCache[colorHex] = drawable
     return drawable
 }
+
+private val busDrawableCache = mutableMapOf<String, BitmapDrawable>()
 
 private fun createPrettyBusMarkerDrawable(
     context: Context,
     busNumber: String,
-    hasRamp: Boolean
+    hasRamp: Boolean,
+    colorHex: String = "#35399D"
 ): BitmapDrawable {
+    val cacheKey = "${busNumber}_${hasRamp}_${colorHex}"
+    busDrawableCache[cacheKey]?.let { return it }
+
     val density = context.resources.displayMetrics.density
 
     // Text paint for bus number
@@ -404,9 +586,9 @@ private fun createPrettyBusMarkerDrawable(
     canvas.drawRoundRect(RectF(busLeft + (4 * density), busBottom - (4 * density), busLeft + (10 * density), busBottom + (2 * density)), 2 * density, 2 * density, wheelPaint)
     canvas.drawRoundRect(RectF(busRight - (10 * density), busBottom - (4 * density), busRight - (4 * density), busBottom + (2 * density)), 2 * density, 2 * density, wheelPaint)
 
-    // 3. Bus Body
+    // 3. Bus Body (Dynamic Hex Color!)
     val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#1D4ED8") // Modern Transit Blue
+        color = try { Color.parseColor(colorHex) } catch (_: Exception) { Color.parseColor("#35399D") }
         style = Paint.Style.FILL
     }
     val bodyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -481,7 +663,9 @@ private fun createPrettyBusMarkerDrawable(
         canvas.drawText("♿", rampRect.centerX(), rampY, rampTextPaint)
     }
 
-    return BitmapDrawable(context.resources, bitmap)
+    val drawable = BitmapDrawable(context.resources, bitmap)
+    busDrawableCache[cacheKey] = drawable
+    return drawable
 }
 
 private fun createPersonLocationBitmap(context: Context): Bitmap {

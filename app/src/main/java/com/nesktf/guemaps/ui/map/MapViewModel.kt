@@ -21,6 +21,9 @@ import com.nesktf.guemaps.data.model.FlatBusLine
 import com.nesktf.guemaps.data.remote.SaetaApiClient
 import com.nesktf.guemaps.data.repository.BusRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +31,28 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+
+val BUS_LINE_PALETTE = listOf(
+    "#35399D",
+    "#724829",
+    "#70B91A",
+    "#BE45B4",
+    "#F17614",
+    "#A12723",
+    "#F9C628",
+    "#3AAFD9"
+)
+
+data class ActiveLineData(
+    val line: FlatBusLine,
+    val colorHex: String,
+    val routeNodes: List<BusNode> = emptyList(),
+    val isLoadingRoute: Boolean = false,
+    val isRouteOffline: Boolean = false,
+    val activeBuses: List<BusPos> = emptyList()
+)
 
 data class MapCameraState(
     val centerLat: Double = -24.7859,
@@ -45,6 +70,8 @@ data class MapUiState(
     val favoriteLineCodes: Set<String> = emptySet(),
     val flatLines: List<FlatBusLine> = emptyList(),
     val filteredLines: List<FlatBusLine> = emptyList(),
+    val selectedLines: List<FlatBusLine> = emptyList(),
+    val activeLines: Map<String, ActiveLineData> = emptyMap(),
     val selectedLine: FlatBusLine? = null,
     val isLoadingRoute: Boolean = false,
     val routeNodes: List<BusNode> = emptyList(),
@@ -74,6 +101,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_LAST_LINE_CODE = "last_line_code"
         private const val KEY_LAST_LINE_DESC = "last_line_desc"
         private const val KEY_LAST_LINE_PATH = "last_line_path"
+        private const val KEY_SELECTED_LINES_JSON = "selected_lines_json"
     }
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -95,12 +123,33 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         // Load favorites
         loadFavoriteLines()
 
-        // Restore last selected line on boot
-        val lastSelected = getSavedSelectedLine()
-        if (lastSelected != null) {
-            _uiState.update { it.copy(selectedLine = lastSelected, isLoadingRoute = true) }
-            loadRouteForLine(lastSelected.codLinea)
-            startActiveBusesPolling(lastSelected.codLinea)
+        // Restore saved selected lines on boot
+        val savedLines = getSavedSelectedLines()
+        if (savedLines.isNotEmpty()) {
+            var colorIndex = 0
+            val activeMap = mutableMapOf<String, ActiveLineData>()
+            savedLines.forEach { line ->
+                val color = BUS_LINE_PALETTE[colorIndex % BUS_LINE_PALETTE.size]
+                colorIndex++
+                activeMap[line.codLinea] = ActiveLineData(
+                    line = line,
+                    colorHex = color,
+                    isLoadingRoute = true
+                )
+            }
+            _uiState.update {
+                it.copy(
+                    selectedLines = savedLines,
+                    activeLines = activeMap,
+                    selectedLine = savedLines.firstOrNull(),
+                    isLoadingRoute = true,
+                    shouldFitRouteBounds = true
+                )
+            }
+            savedLines.forEach { line ->
+                loadRouteForLine(line.codLinea)
+            }
+            restartActiveBusesPolling()
         }
 
         loadBusGroups()
@@ -125,12 +174,50 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun saveSelectedLine(line: FlatBusLine) {
+    private fun assignNextColor(currentActiveLines: Map<String, ActiveLineData>): String {
+        val usedColors = currentActiveLines.values.map { it.colorHex }.toSet()
+        return BUS_LINE_PALETTE.firstOrNull { it !in usedColors } ?: BUS_LINE_PALETTE.first()
+    }
+
+    private fun saveSelectedLines(lines: List<FlatBusLine>) {
+        val array = JSONArray()
+        lines.forEach { line ->
+            val obj = JSONObject().apply {
+                put("codLinea", line.codLinea)
+                put("descripcion", line.descripcion)
+                put("groupPath", line.groupPath)
+            }
+            array.put(obj)
+        }
         prefs.edit()
-            .putString(KEY_LAST_LINE_CODE, line.codLinea)
-            .putString(KEY_LAST_LINE_DESC, line.descripcion)
-            .putString(KEY_LAST_LINE_PATH, line.groupPath)
+            .putString(KEY_SELECTED_LINES_JSON, array.toString())
+            .putString(KEY_LAST_LINE_CODE, lines.firstOrNull()?.codLinea)
+            .putString(KEY_LAST_LINE_DESC, lines.firstOrNull()?.descripcion)
+            .putString(KEY_LAST_LINE_PATH, lines.firstOrNull()?.groupPath)
             .apply()
+    }
+
+    private fun getSavedSelectedLines(): List<FlatBusLine> {
+        val jsonStr = prefs.getString(KEY_SELECTED_LINES_JSON, null)
+        if (!jsonStr.isNullOrBlank()) {
+            try {
+                val array = JSONArray(jsonStr)
+                val list = mutableListOf<FlatBusLine>()
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(
+                        FlatBusLine(
+                            groupPath = obj.optString("groupPath", ""),
+                            codLinea = obj.getString("codLinea"),
+                            descripcion = obj.optString("descripcion", "")
+                        )
+                    )
+                }
+                if (list.isNotEmpty()) return list.take(8)
+            } catch (_: Exception) {}
+        }
+        val single = getSavedSelectedLine()
+        return if (single != null) listOf(single) else emptyList()
     }
 
     private fun getSavedSelectedLine(): FlatBusLine? {
@@ -147,11 +234,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             result.onSuccess { groupsResult ->
                 val cats = groupsResult.rootGroup.extractCategories()
 
-                // Only expand the subgroup that contains the selected bus line on boot
-                val currentLineCode = _uiState.value.selectedLine?.codLinea
-                val bootSubgroup = if (currentLineCode != null) {
+                val currentLineCodes = _uiState.value.selectedLines.map { it.codLinea }.toSet()
+                val bootSubgroups = if (currentLineCodes.isNotEmpty()) {
                     cats.flatMap { cat ->
-                        cat.subgroups.filter { sub -> sub.lines.any { it.codLinea == currentLineCode } }
+                        cat.subgroups.filter { sub -> sub.lines.any { currentLineCodes.contains(it.codLinea) } }
                             .map { "${cat.name}::${it.subgroupName}" }
                     }.toSet()
                 } else {
@@ -164,7 +250,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         isLoadingGroups = false,
                         busGroups = groupsResult.rootGroup,
                         categories = cats,
-                        expandedSubgroups = if (state.expandedSubgroups.isEmpty()) bootSubgroup else state.expandedSubgroups,
+                        expandedSubgroups = if (state.expandedSubgroups.isEmpty()) bootSubgroups else state.expandedSubgroups,
                         flatLines = groupsResult.flatLines,
                         filteredLines = filtered,
                         isGroupsOffline = groupsResult.isFromCache,
@@ -182,37 +268,113 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun selectLine(line: FlatBusLine) {
-        saveSelectedLine(line)
-        _uiState.update {
-            it.copy(
-                selectedLine = line,
-                isLinePickerOpen = false,
-                isLoadingRoute = true,
-                errorMessage = null,
-                activeBuses = emptyList(),
-                shouldFitRouteBounds = true
+    fun toggleLineSelection(line: FlatBusLine) {
+        val state = _uiState.value
+        val isAlreadySelected = state.selectedLines.any { it.codLinea == line.codLinea }
+
+        if (isAlreadySelected) {
+            val updatedLines = state.selectedLines.filter { it.codLinea != line.codLinea }
+            val updatedActiveMap = state.activeLines - line.codLinea
+            saveSelectedLines(updatedLines)
+
+            val allNodes = updatedActiveMap.values.flatMap { it.routeNodes }
+            val allBuses = updatedActiveMap.values.flatMap { it.activeBuses }
+            val details = computeLiveDetails(allBuses, allNodes)
+
+            _uiState.update {
+                it.copy(
+                    selectedLines = updatedLines,
+                    activeLines = updatedActiveMap,
+                    selectedLine = updatedLines.firstOrNull(),
+                    routeNodes = allNodes,
+                    activeBuses = allBuses,
+                    busLiveDetails = details,
+                    errorMessage = null
+                )
+            }
+            if (updatedLines.isNotEmpty()) {
+                restartActiveBusesPolling()
+            } else {
+                busPollingJob?.cancel()
+            }
+        } else {
+            if (state.selectedLines.size >= 8) {
+                _uiState.update { it.copy(errorMessage = "Máximo 8 líneas permitidas al mismo tiempo") }
+                return
+            }
+
+            val assignedColor = assignNextColor(state.activeLines)
+            val newLineData = ActiveLineData(
+                line = line,
+                colorHex = assignedColor,
+                isLoadingRoute = true
             )
+            val updatedLines = state.selectedLines + line
+            val updatedActiveMap = state.activeLines + (line.codLinea to newLineData)
+            saveSelectedLines(updatedLines)
+
+            _uiState.update {
+                it.copy(
+                    selectedLines = updatedLines,
+                    activeLines = updatedActiveMap,
+                    selectedLine = updatedLines.firstOrNull(),
+                    errorMessage = null,
+                    shouldFitRouteBounds = true
+                )
+            }
+
+            loadRouteForLine(line.codLinea)
+            restartActiveBusesPolling()
         }
-        loadRouteForLine(line.codLinea)
-        startActiveBusesPolling(line.codLinea)
+    }
+
+    fun selectLine(line: FlatBusLine) {
+        toggleLineSelection(line)
+    }
+
+    fun removeLine(lineCode: String) {
+        val line = _uiState.value.selectedLines.find { it.codLinea == lineCode }
+        if (line != null) {
+            toggleLineSelection(line)
+        }
     }
 
     private fun loadRouteForLine(lineId: String, forceNetwork: Boolean = false) {
         viewModelScope.launch {
             val result = repository.getBusRoute(lineId, forceNetwork = forceNetwork)
             result.onSuccess { routeResult ->
-                _uiState.update {
-                    it.copy(
+                _uiState.update { state ->
+                    val lineData = state.activeLines[lineId]
+                    val updatedLineData = lineData?.copy(
                         isLoadingRoute = false,
                         routeNodes = routeResult.nodes,
                         isRouteOffline = routeResult.isFromCache
                     )
+                    val updatedMap = if (updatedLineData != null) {
+                        state.activeLines + (lineId to updatedLineData)
+                    } else state.activeLines
+
+                    val allNodes = updatedMap.values.flatMap { it.routeNodes }
+                    val allOffline = updatedMap.values.any { it.isRouteOffline }
+                    val anyLoading = updatedMap.values.any { it.isLoadingRoute }
+
+                    state.copy(
+                        activeLines = updatedMap,
+                        routeNodes = allNodes,
+                        isRouteOffline = allOffline,
+                        isLoadingRoute = anyLoading
+                    )
                 }
+                recalculateBusLiveDetails()
             }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        isLoadingRoute = false,
+                _uiState.update { state ->
+                    val lineData = state.activeLines[lineId]
+                    val updatedLineData = lineData?.copy(isLoadingRoute = false)
+                    val updatedMap = if (updatedLineData != null) {
+                        state.activeLines + (lineId to updatedLineData)
+                    } else state.activeLines
+                    state.copy(
+                        activeLines = updatedMap,
                         errorMessage = error.localizedMessage ?: "Error al cargar recorrido"
                     )
                 }
@@ -220,56 +382,85 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun startActiveBusesPolling(lineId: String) {
+    private fun restartActiveBusesPolling() {
         busPollingJob?.cancel()
+        val lines = _uiState.value.selectedLines
+        if (lines.isEmpty()) return
+
         busPollingJob = viewModelScope.launch {
             while (isActive) {
-                fetchActiveBusesInternal(lineId)
+                fetchActiveBusesForAllLines()
                 delay(10_000) // Poll every 10 seconds
             }
         }
     }
 
     fun refreshActiveBuses() {
-        val currentLine = _uiState.value.selectedLine ?: return
+        if (_uiState.value.selectedLines.isEmpty()) return
         viewModelScope.launch {
-            fetchActiveBusesInternal(currentLine.codLinea)
+            fetchActiveBusesForAllLines()
         }
     }
 
-    private suspend fun fetchActiveBusesInternal(lineId: String) {
+    private suspend fun fetchActiveBusesForAllLines() {
+        val currentLines = _uiState.value.selectedLines
+        if (currentLines.isEmpty()) return
+
         _uiState.update { it.copy(isLoadingBuses = true, busesErrorMessage = null) }
-        val result = repository.getActiveBuses(lineId)
-        result.onSuccess { buses ->
-            val detailsMap = computeLiveDetails(buses)
-            _uiState.update {
-                it.copy(
-                    isLoadingBuses = false,
-                    activeBuses = buses,
-                    busLiveDetails = detailsMap,
-                    busesErrorMessage = null
-                )
+
+        val results = try {
+            coroutineScope {
+                currentLines.map { line ->
+                    async {
+                        val res = runCatching { repository.getActiveBuses(line.codLinea) }
+                            .getOrElse { Result.failure(it) }
+                        line.codLinea to res
+                    }
+                }.awaitAll()
             }
-        }.onFailure { error ->
-            _uiState.update {
-                it.copy(
-                    isLoadingBuses = false,
-                    busesErrorMessage = if (it.isRouteOffline) "Sin conexión para colectivos en vivo" else (error.localizedMessage ?: "Error al actualizar colectivos")
-                )
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        _uiState.update { state ->
+            var updatedMap = state.activeLines
+            results.forEach { (lineId, res) ->
+                val lineData = updatedMap[lineId]
+                if (lineData != null && res.isSuccess) {
+                    val buses = res.getOrDefault(emptyList())
+                    updatedMap = updatedMap + (lineId to lineData.copy(activeBuses = buses))
+                }
             }
+
+            val allBuses = updatedMap.values.flatMap { it.activeBuses }
+            val allNodes = updatedMap.values.flatMap { it.routeNodes }
+            val liveDetails = computeLiveDetails(allBuses, allNodes)
+
+            state.copy(
+                isLoadingBuses = false,
+                activeLines = updatedMap,
+                activeBuses = allBuses,
+                busLiveDetails = liveDetails,
+                busesErrorMessage = null
+            )
         }
     }
 
     private fun computeLiveDetails(
         buses: List<BusPos>,
+        allNodes: List<BusNode> = _uiState.value.routeNodes,
         now: Long = System.currentTimeMillis()
     ): Map<String, BusLiveDetails> {
-        val stops = _uiState.value.routeNodes.filter { it.parada }
+        val stops = allNodes.filter { it.parada }
         val userLoc = _uiState.value.userLocation
 
-        // Find the bus stop on this route closest to the USER
+        // Find the bus stop on this route closest to the USER using fast squared distance
         val userNearestStop = if (userLoc != null && stops.isNotEmpty()) {
-            stops.minByOrNull { calculateDistanceMeters(userLoc.latitude, userLoc.longitude, it.latitud, it.longitud) }
+            stops.minByOrNull {
+                val dLat = userLoc.latitude - it.latitud
+                val dLon = userLoc.longitude - it.longitud
+                dLat * dLat + dLon * dLon
+            }
         } else null
 
         val detailsMap = mutableMapOf<String, BusLiveDetails>()
@@ -289,7 +480,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             }
             previousPositions[bus.interno] = Pair(bus, now)
 
-            // 1. Distance between this bus and the closest bus stop to the user!
+            // 1. Distance between this bus and the closest bus stop to the user
             var userStopDist: Double? = null
             var userStopName: String? = null
             if (userNearestStop != null) {
@@ -297,11 +488,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 userStopName = userNearestStop.descripcionParada?.takeIf { it.isNotBlank() } ?: userNearestStop.codigoParada
             }
 
-            // 2. Distance to nearest stop of the bus itself (fallback)
+            // 2. Distance to nearest stop of the bus itself (fallback) using fast search
             var busStopName: String? = null
             var busStopDist: Double? = null
             if (stops.isNotEmpty()) {
-                val nearestToBus = stops.minByOrNull { calculateDistanceMeters(bus.latitud, bus.longitud, it.latitud, it.longitud) }
+                val nearestToBus = stops.minByOrNull {
+                    val dLat = bus.latitud - it.latitud
+                    val dLon = bus.longitud - it.longitud
+                    dLat * dLat + dLon * dLon
+                }
                 if (nearestToBus != null) {
                     busStopName = nearestToBus.descripcionParada?.takeIf { it.isNotBlank() } ?: nearestToBus.codigoParada
                     busStopDist = calculateDistanceMeters(bus.latitud, bus.longitud, nearestToBus.latitud, nearestToBus.longitud)

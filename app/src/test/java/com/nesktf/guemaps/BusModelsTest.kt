@@ -162,4 +162,29 @@ class BusModelsTest {
         assertEquals("123", bus2.interno)
         assertFalse(bus2.vehiculoRampa)
     }
+
+    @Test
+    fun testFlatBusLineHelperProperties() {
+        val line1 = com.nesktf.guemaps.data.model.FlatBusLine("Corredor 1", "101", "1A - VILLA PRIMAVERA")
+        assertEquals("1A", line1.nombreCorto)
+        assertEquals("1A - VILLA PRIMAVERA", line1.nombreLinea)
+
+        val line2 = com.nesktf.guemaps.data.model.FlatBusLine("Troncales", "200", "TRONCAL N-S")
+        assertEquals("TRONCAL N-S", line2.nombreCorto)
+    }
+
+    @Test
+    fun testMultiBusSelectionSerialization() {
+        val lines = listOf(
+            com.nesktf.guemaps.data.model.FlatBusLine("Corredor 1", "101", "1A"),
+            com.nesktf.guemaps.data.model.FlatBusLine("Corredor 2", "102", "2B")
+        )
+        val json = gson.toJson(lines)
+        val type = object : com.google.gson.reflect.TypeToken<List<com.nesktf.guemaps.data.model.FlatBusLine>>() {}.type
+        val restored: List<com.nesktf.guemaps.data.model.FlatBusLine> = gson.fromJson(json, type)
+        assertEquals(2, restored.size)
+        assertEquals("101", restored[0].codLinea)
+        assertEquals("102", restored[1].codLinea)
+    }
 }
+
