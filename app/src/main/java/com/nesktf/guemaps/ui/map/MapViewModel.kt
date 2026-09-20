@@ -29,6 +29,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+data class MapCameraState(
+    val centerLat: Double = -24.7859,
+    val centerLon: Double = -65.4117,
+    val zoomLevel: Double = 15.0
+)
+
 data class MapUiState(
     val isLoadingGroups: Boolean = false,
     val busGroups: BusGroupNode? = null,
@@ -55,7 +61,9 @@ data class MapUiState(
     val errorMessage: String? = null,
     val searchQuery: String = "",
     val isLinePickerOpen: Boolean = false,
-    val showStops: Boolean = true
+    val showStops: Boolean = true,
+    val cameraState: MapCameraState = MapCameraState(),
+    val shouldFitRouteBounds: Boolean = true
 )
 
 class MapViewModel(application: Application) : AndroidViewModel(application) {
@@ -71,6 +79,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val repository: BusRepository
     private var busPollingJob: Job? = null
+    private var locationTimeoutJob: Job? = null
     private val previousPositions = mutableMapOf<String, Pair<BusPos, Long>>()
     private val locationManager = application.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var locationListener: LocationListener? = null
@@ -181,7 +190,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 isLinePickerOpen = false,
                 isLoadingRoute = true,
                 errorMessage = null,
-                activeBuses = emptyList()
+                activeBuses = emptyList(),
+                shouldFitRouteBounds = true
             )
         }
         loadRouteForLine(line.codLinea)
@@ -356,14 +366,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             try { locationManager.removeUpdates(it) } catch (_: SecurityException) {}
         }
 
+        var isInitialFix = true
         val listener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 setUserLocationInternal(location)
-                _uiState.update { it.copy(isLocatingUser = false) }
-                onLocationReady?.invoke(location)
-                try {
-                    locationManager.removeUpdates(this)
-                } catch (_: SecurityException) {}
+                if (isInitialFix || _uiState.value.isLocatingUser) {
+                    isInitialFix = false
+                    _uiState.update { it.copy(isLocatingUser = false) }
+                    onLocationReady?.invoke(location)
+                }
             }
             override fun onProviderDisabled(provider: String) {}
             override fun onProviderEnabled(provider: String) {}
@@ -374,24 +385,36 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 locationManager.requestLocationUpdates(
                     p,
-                    1000L,
-                    1f,
+                    2000L,
+                    2f,
                     listener,
                     Looper.getMainLooper()
                 )
             } catch (_: SecurityException) {}
         }
 
-        // Safety timeout of 8 seconds
-        viewModelScope.launch {
-            delay(8000)
-            if (_uiState.value.isLocatingUser) {
-                _uiState.update { it.copy(isLocatingUser = false) }
-                locationListener?.let {
-                    try { locationManager.removeUpdates(it) } catch (_: SecurityException) {}
-                }
-            }
+        // Poll user location for at least 5 minutes before giving up (300,000 ms)
+        locationTimeoutJob?.cancel()
+        locationTimeoutJob = viewModelScope.launch {
+            delay(300_000L)
+            stopLocationUpdates()
         }
+    }
+
+    private fun stopLocationUpdates() {
+        _uiState.update { it.copy(isLocatingUser = false) }
+        locationListener?.let {
+            try { locationManager.removeUpdates(it) } catch (_: SecurityException) {}
+            locationListener = null
+        }
+    }
+
+    fun updateMapCamera(lat: Double, lon: Double, zoom: Double) {
+        _uiState.update { it.copy(cameraState = MapCameraState(lat, lon, zoom)) }
+    }
+
+    fun onRouteBoundsFitted() {
+        _uiState.update { it.copy(shouldFitRouteBounds = false) }
     }
 
     private fun setUserLocationInternal(location: Location) {
@@ -463,8 +486,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         busPollingJob?.cancel()
-        locationListener?.let {
-            try { locationManager.removeUpdates(it) } catch (_: SecurityException) {}
-        }
+        locationTimeoutJob?.cancel()
+        stopLocationUpdates()
     }
 }

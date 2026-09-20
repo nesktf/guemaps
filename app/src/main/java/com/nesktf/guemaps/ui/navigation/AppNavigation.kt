@@ -1,14 +1,20 @@
 package com.nesktf.guemaps.ui.navigation
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,6 +49,14 @@ fun AppNavigation(
         AboutScreen(onBack = { showAboutScreen = false })
     } else {
         Scaffold(
+            topBar = {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsTopHeight(WindowInsets.statusBars)
+                ) {}
+            },
             bottomBar = {
                 NavigationBar {
                     NavigationBarItem(

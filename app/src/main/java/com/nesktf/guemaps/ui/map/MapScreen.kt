@@ -121,7 +121,7 @@ fun MapScreen(
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (fineGranted || coarseGranted) {
             viewModel.requestUserLocation { loc ->
-                mapActions.animateToLocation(loc.latitude, loc.longitude, 16.5)
+                mapActions.animateToLocation(loc.latitude, loc.longitude, 17.0)
             }
         }
     }
@@ -134,6 +134,10 @@ fun MapScreen(
             showStops = state.showStops,
             userLocation = state.userLocation,
             busLiveDetails = state.busLiveDetails,
+            cameraState = state.cameraState,
+            shouldFitRouteBounds = state.shouldFitRouteBounds,
+            onRouteBoundsFitted = { viewModel.onRouteBoundsFitted() },
+            onCameraMoved = { lat, lon, zoom -> viewModel.updateMapCamera(lat, lon, zoom) },
             onBusSelected = { viewModel.selectBusForFloatingCard(it) },
             mapActions = mapActions,
             modifier = Modifier.fillMaxSize()
@@ -178,45 +182,38 @@ fun MapScreen(
 
             // Line Selector Floating Card
             Surface(
-                color = MaterialTheme.colorScheme.surface,
+                onClick = { viewModel.setLinePickerOpen(true) },
                 shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 6.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { viewModel.setLinePickerOpen(true) }
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DirectionsBus,
-                            contentDescription = "Bus",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-
+                    Icon(
+                        imageVector = Icons.Default.DirectionsBus,
+                        contentDescription = "Línea",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
                     Spacer(modifier = Modifier.width(12.dp))
-
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = state.selectedLine?.let { "${it.descripcion} (${it.codLinea})" }
-                                ?: "Seleccionar colectivo",
-                            style = MaterialTheme.typography.titleMedium
+                            text = state.selectedLine?.descripcion ?: "Seleccionar Línea",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = state.selectedLine?.groupPath
-                                ?: "Toque para ver las líneas y grupos",
+                            text = state.selectedLine?.groupPath ?: "Toque aquí para buscar o elegir línea",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
@@ -224,69 +221,6 @@ fun MapScreen(
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp
-                        )
-                    }
-                }
-            }
-
-            // Status bar for active buses
-            if (state.selectedLine != null && !state.isLoadingRoute) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f),
-                    shape = RoundedCornerShape(20.dp),
-                    shadowElevation = 3.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val totalBuses = state.activeBuses.size
-                        val rampBuses = state.activeBuses.count { it.vehiculoRampa }
-                        Text(
-                            text = when {
-                                state.isLoadingBuses -> "Actualizando posiciones..."
-                                state.busesErrorMessage != null -> state.busesErrorMessage ?: ""
-                                totalBuses == 0 -> "No hay colectivos activos en este momento"
-                                totalBuses == 1 -> {
-                                    if (rampBuses == 1) "1 colectivo activo (con rampa ♿)"
-                                    else "1 colectivo activo (sin rampa)"
-                                }
-                                else -> "$totalBuses colectivos activos ($rampBuses con rampa ♿)"
-                            },
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-                }
-            }
-
-            // GPS Location loading indicator
-            AnimatedVisibility(
-                visible = state.isLocatingUser,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(20.dp),
-                    shadowElevation = 3.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Obteniendo ubicación GPS...",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
@@ -306,7 +240,7 @@ fun MapScreen(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(top = if (state.isGroupsOffline || state.isRouteOffline) 155.dp else 115.dp, start = 14.dp)
+                        .padding(top = if (state.isGroupsOffline || state.isRouteOffline) 130.dp else 90.dp, start = 14.dp)
                         .widthIn(max = 240.dp)
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
@@ -491,7 +425,7 @@ fun MapScreen(
                         mapActions.animateToLocation(
                             state.userLocation!!.latitude,
                             state.userLocation!!.longitude,
-                            16.5
+                            17.0
                         )
                     }
 
@@ -504,7 +438,7 @@ fun MapScreen(
 
                     if (fineGranted || coarseGranted) {
                         viewModel.requestUserLocation { loc ->
-                            mapActions.animateToLocation(loc.latitude, loc.longitude, 16.5)
+                            mapActions.animateToLocation(loc.latitude, loc.longitude, 17.0)
                         }
                     } else {
                         locationPermissionLauncher.launch(
@@ -558,6 +492,77 @@ fun MapScreen(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Recargar colectivos"
                     )
+                }
+            }
+        }
+
+        // Bottom Center Toasts (Active buses count & GPS loading indicator)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp, start = 72.dp, end = 72.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Active buses toast
+            if (state.selectedLine != null && !state.isLoadingRoute) {
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.95f),
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val totalBuses = state.activeBuses.size
+                        val rampBuses = state.activeBuses.count { it.vehiculoRampa }
+                        Text(
+                            text = when {
+                                state.isLoadingBuses -> "Actualizando posiciones..."
+                                state.busesErrorMessage != null -> state.busesErrorMessage ?: ""
+                                totalBuses == 0 -> "No hay colectivos activos en este momento"
+                                totalBuses == 1 -> {
+                                    if (rampBuses == 1) "1 colectivo activo (con rampa ♿)"
+                                    else "1 colectivo activo (sin rampa)"
+                                }
+                                else -> "$totalBuses colectivos activos ($rampBuses con rampa ♿)"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            // GPS Location loading indicator
+            AnimatedVisibility(
+                visible = state.isLocatingUser,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f),
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Obteniendo ubicación GPS...",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
                 }
             }
         }

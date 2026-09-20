@@ -23,6 +23,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.nesktf.guemaps.data.model.BusLiveDetails
 import com.nesktf.guemaps.data.model.BusNode
 import com.nesktf.guemaps.data.model.BusPos
+import android.animation.ValueAnimator
+import android.view.animation.DecelerateInterpolator
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
@@ -47,6 +52,10 @@ fun OsmMapView(
     showStops: Boolean,
     userLocation: Location? = null,
     busLiveDetails: Map<String, BusLiveDetails> = emptyMap(),
+    cameraState: MapCameraState = MapCameraState(),
+    shouldFitRouteBounds: Boolean = false,
+    onRouteBoundsFitted: () -> Unit = {},
+    onCameraMoved: (Double, Double, Double) -> Unit = { _, _, _ -> },
     onBusSelected: (String) -> Unit = {},
     mapActions: MapActions = remember { MapActions() },
     modifier: Modifier = Modifier
@@ -54,49 +63,122 @@ fun OsmMapView(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    val zoomAnimator = remember {
+        object {
+            var animator: ValueAnimator? = null
+            fun animate(mapView: MapView, targetZoom: Double, durationMs: Long = 250L) {
+                animator?.cancel()
+                val currentZoom = mapView.zoomLevelDouble
+                if (Math.abs(currentZoom - targetZoom) < 0.01) return
+                animator = ValueAnimator.ofFloat(currentZoom.toFloat(), targetZoom.toFloat()).apply {
+                    duration = durationMs
+                    interpolator = DecelerateInterpolator()
+                    addUpdateListener { anim ->
+                        mapView.controller.setZoom((anim.animatedValue as Float).toDouble())
+                    }
+                    start()
+                }
+            }
+            fun cancel() {
+                animator?.cancel()
+                animator = null
+            }
+        }
+    }
+
     val mapView = remember {
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-            controller.setZoom(13.5)
-            // Center of Salta, Argentina
-            controller.setCenter(GeoPoint(-24.7859, -65.4117))
+            controller.setZoom(cameraState.zoomLevel.takeIf { it > 0 } ?: 15.0)
+            controller.setCenter(GeoPoint(cameraState.centerLat, cameraState.centerLon))
 
             // Constrain scrolling and zoom to the Province of Salta
             // North: -21.90, East: -62.30, South: -26.50, West: -68.60
             val saltaBounds = BoundingBox(-21.90, -62.30, -26.50, -68.60)
             setScrollableAreaLimitDouble(saltaBounds)
-            minZoomLevel = 8.5
-            maxZoomLevel = 20.0
+            minZoomLevel = 8.0
+            maxZoomLevel = 19.0
+
+            addMapListener(object : MapListener {
+                override fun onScroll(event: ScrollEvent?): Boolean {
+                    val center = mapCenter
+                    if (center != null) {
+                        onCameraMoved(center.latitude, center.longitude, zoomLevelDouble)
+                    }
+                    return false
+                }
+
+                override fun onZoom(event: ZoomEvent?): Boolean {
+                    val center = mapCenter
+                    if (center != null) {
+                        onCameraMoved(center.latitude, center.longitude, zoomLevelDouble)
+                    }
+                    return false
+                }
+            })
+
+            // Smoothly snap to integer zoom after pinch gesture ends to ensure 1:1 pixel crisp tiles
+            var isPinching = false
+            var snapRunnable: Runnable? = null
+
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+                        isPinching = true
+                        snapRunnable?.let { removeCallbacks(it) }
+                        zoomAnimator.cancel()
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        if (isPinching) {
+                            isPinching = false
+                            snapRunnable?.let { removeCallbacks(it) }
+                            snapRunnable = Runnable {
+                                val target = Math.round(zoomLevelDouble).toDouble().coerceIn(minZoomLevel, maxZoomLevel)
+                                if (Math.abs(zoomLevelDouble - target) > 0.02) {
+                                    zoomAnimator.animate(this, target, 250L)
+                                }
+                            }
+                            postDelayed(snapRunnable, 100)
+                        }
+                    }
+                }
+                false
+            }
         }
     }
 
     // Connect mapActions to this MapView instance
     LaunchedEffect(mapActions, routeNodes) {
         mapActions.zoomIn = {
-            mapView.controller.zoomIn()
+            val target = (Math.floor(mapView.zoomLevelDouble) + 1.0).coerceAtMost(19.0)
+            zoomAnimator.animate(mapView, target, 200L)
         }
         mapActions.zoomOut = {
-            mapView.controller.zoomOut()
+            val target = (Math.ceil(mapView.zoomLevelDouble) - 1.0).coerceAtLeast(8.0)
+            zoomAnimator.animate(mapView, target, 200L)
         }
         mapActions.resetMap = {
             if (routeNodes.size > 1) {
                 val geoPoints = routeNodes.map { GeoPoint(it.latitud, it.longitud) }
                 try {
                     val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
-                    mapView.zoomToBoundingBox(boundingBox, true, 120)
+                    mapView.zoomToBoundingBox(boundingBox, false, 120)
+                    val snapped = (Math.round(mapView.zoomLevelDouble) + 1.0).coerceIn(10.0, 18.0)
+                    zoomAnimator.animate(mapView, snapped, 300L)
                 } catch (e: Exception) {
-                    mapView.controller.setZoom(13.5)
+                    zoomAnimator.animate(mapView, 15.0, 300L)
                     mapView.controller.animateTo(GeoPoint(-24.7859, -65.4117))
                 }
             } else {
-                mapView.controller.setZoom(13.5)
+                zoomAnimator.animate(mapView, 15.0, 300L)
                 mapView.controller.animateTo(GeoPoint(-24.7859, -65.4117))
             }
         }
         mapActions.animateToLocation = { lat, lon, zoom ->
-            mapView.controller.setZoom(zoom)
+            val snapped = Math.round(zoom).toDouble().coerceIn(8.0, 19.0)
+            zoomAnimator.animate(mapView, snapped, 300L)
             mapView.controller.animateTo(GeoPoint(lat, lon))
         }
     }
@@ -113,6 +195,7 @@ fun OsmMapView(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            zoomAnimator.cancel()
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapView.onDetach()
         }
@@ -215,17 +298,20 @@ fun OsmMapView(
         mapView.invalidate()
     }
 
-    // Auto-fit bounds when route changes
-    LaunchedEffect(routeNodes) {
-        if (routeNodes.size > 1) {
+    // Auto-fit bounds ONLY when selecting a new line
+    LaunchedEffect(routeNodes, shouldFitRouteBounds) {
+        if (shouldFitRouteBounds && routeNodes.size > 1) {
             val geoPoints = routeNodes.map { GeoPoint(it.latitud, it.longitud) }
             try {
                 val boundingBox = BoundingBox.fromGeoPoints(geoPoints)
                 mapView.post {
-                    mapView.zoomToBoundingBox(boundingBox, true, 120)
+                    mapView.zoomToBoundingBox(boundingBox, false, 120)
+                    val snapped = (Math.round(mapView.zoomLevelDouble) + 1.0).coerceIn(10.0, 18.0)
+                    zoomAnimator.animate(mapView, snapped, 300L)
+                    onRouteBoundsFitted()
                 }
             } catch (e: Exception) {
-                // Ignore bounds calculation failure
+                onRouteBoundsFitted()
             }
         }
     }
