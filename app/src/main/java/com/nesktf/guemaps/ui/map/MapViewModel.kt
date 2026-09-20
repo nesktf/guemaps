@@ -17,6 +17,7 @@ import com.nesktf.guemaps.data.model.BusGroupNode
 import com.nesktf.guemaps.data.model.BusLiveDetails
 import com.nesktf.guemaps.data.model.BusNode
 import com.nesktf.guemaps.data.model.BusPos
+import com.nesktf.guemaps.data.model.BusStopRecord
 import com.nesktf.guemaps.data.model.FlatBusLine
 import com.nesktf.guemaps.data.remote.SaetaApiClient
 import com.nesktf.guemaps.data.repository.BusRepository
@@ -53,15 +54,15 @@ val BUS_LINE_PALETTE = listOf(
 data class ActiveLineData(
     val line: FlatBusLine,
     val colorHex: String,
+    val isLoadingRoute: Boolean = true,
     val routeNodes: List<BusNode> = emptyList(),
-    val isLoadingRoute: Boolean = false,
     val isRouteOffline: Boolean = false,
     val activeBuses: List<BusPos> = emptyList()
 )
 
 data class MapCameraState(
-    val centerLat: Double = -24.7859,
-    val centerLon: Double = -65.4117,
+    val latitude: Double = -24.7859,
+    val longitude: Double = -65.4117,
     val zoomLevel: Double = 15.0
 )
 
@@ -76,6 +77,10 @@ data class MapUiState(
     val presets: List<BusPreset> = emptyList(),
     val flatLines: List<FlatBusLine> = emptyList(),
     val filteredLines: List<FlatBusLine> = emptyList(),
+    val filteredStops: List<Pair<BusStopRecord, FlatBusLine?>> = emptyList(),
+    val isSyncingStops: Boolean = false,
+    val syncProgressText: String? = null,
+    val feedbackMessage: String? = null,
     val selectedLines: List<FlatBusLine> = emptyList(),
     val activeLines: Map<String, ActiveLineData> = emptyMap(),
     val selectedLine: FlatBusLine? = null,
@@ -377,6 +382,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         errorMessage = null
                     )
                 }
+                triggerInitialRoutesSync(groupsResult.flatLines)
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(
@@ -757,11 +763,86 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSearchQuery(query: String) {
+        val filteredL = filterLines(_uiState.value.flatLines, query)
+        val stops = if (query.trim().length >= 2) {
+            val stopRecords = repository.searchBusStops(query.trim())
+            val lineMap = _uiState.value.flatLines.associateBy { it.codLinea }
+            stopRecords.map { stop -> Pair(stop, lineMap[stop.lineId]) }
+        } else {
+            emptyList()
+        }
         _uiState.update { state ->
             state.copy(
                 searchQuery = query,
-                filteredLines = filterLines(state.flatLines, query)
+                filteredLines = filteredL,
+                filteredStops = stops
             )
+        }
+    }
+
+    sealed class AddStopResult {
+        data class Added(val line: FlatBusLine) : AddStopResult()
+        data class AlreadySelected(val line: FlatBusLine) : AddStopResult()
+        object LimitReached : AddStopResult()
+        object NotFound : AddStopResult()
+    }
+
+    fun addBusLineFromStop(stop: BusStopRecord): AddStopResult {
+        val state = _uiState.value
+        val line = state.flatLines.find { it.codLinea == stop.lineId }
+            ?: return AddStopResult.NotFound
+
+        val isAlreadySelected = state.selectedLines.any { it.codLinea == line.codLinea }
+        if (isAlreadySelected) {
+            val msg = "La Línea ${line.nombreCorto} ya está en el mapa"
+            _uiState.update { it.copy(feedbackMessage = msg, shouldFitRouteBounds = false) }
+            return AddStopResult.AlreadySelected(line)
+        }
+
+        if (state.selectedLines.size >= MAX_SELECTED_LINES) {
+            val msg = "Límite alcanzado (máximo $MAX_SELECTED_LINES colectivos)"
+            _uiState.update { it.copy(feedbackMessage = msg) }
+            return AddStopResult.LimitReached
+        }
+
+        // Add line
+        toggleLineSelection(line)
+        val msg = "Línea ${line.nombreCorto} agregada"
+        _uiState.update { it.copy(feedbackMessage = msg, shouldFitRouteBounds = false) }
+        return AddStopResult.Added(line)
+    }
+
+    fun clearFeedbackMessage() {
+        _uiState.update { it.copy(feedbackMessage = null) }
+    }
+
+    private var syncJob: Job? = null
+
+    private fun triggerInitialRoutesSync(lines: List<FlatBusLine>) {
+        if (syncJob?.isActive == true || lines.isEmpty()) return
+        val cachedCount = repository.getCachedRoutesCount()
+        if (cachedCount >= lines.size) return // All routes already cached and stops indexed
+
+        syncJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isSyncingStops = true,
+                    syncProgressText = "Sincronizando paradas offline ($cachedCount/${lines.size})..."
+                )
+            }
+            repository.syncAllBusRoutes(lines) { current, total ->
+                _uiState.update {
+                    it.copy(
+                        syncProgressText = "Sincronizando paradas offline ($current/$total)..."
+                    )
+                }
+            }
+            _uiState.update {
+                it.copy(
+                    isSyncingStops = false,
+                    syncProgressText = null
+                )
+            }
         }
     }
 
@@ -802,6 +883,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         busPollingJob?.cancel()
         locationTimeoutJob?.cancel()
+        syncJob?.cancel()
         stopLocationUpdates()
     }
 }

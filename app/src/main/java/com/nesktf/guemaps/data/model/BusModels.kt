@@ -1,6 +1,7 @@
 package com.nesktf.guemaps.data.model
 
 import com.google.gson.annotations.SerializedName
+import java.security.MessageDigest
 
 data class BusGroupsResponse(
     @SerializedName("error") val error: Int = 0,
@@ -99,7 +100,7 @@ data class FlatBusLine(
             return if (parts.size > 1 && parts[0].trim().length <= 6) {
                 parts[0].trim()
             } else {
-                descripcion.take(32)
+                descripcion.take(64)
             }
         }
 
@@ -119,6 +120,101 @@ fun computeLineCodesHash(lines: List<FlatBusLine>): String {
     return lines.map { it.codLinea.trim() }.sorted().joinToString("|")
 }
 
+data class BusStopRecord(
+    val lineId: String,
+    val stopCode: String,
+    val stopName: String,
+    val latitude: Double,
+    val longitude: Double
+)
+
+fun sanitizeStopDescription(raw: String): String {
+    if (!raw.contains('\uFFFD')) return raw.trim()
+
+    var text = raw
+    // Known Salta locations and street names corrupted by SAETA API's legacy charset conversion
+    val replacements = listOf(
+        "Alarc\uFFFDn" to "Alarcón",
+        "Asunci\uFFFDn" to "Asunción",
+        "A\uFFFDrea" to "Aérea",
+        "Bah\uFFFD" to "Bahía",
+        "B\uFFFDl" to "Bélgica",
+        "Caba\uFFFDas" to "Cabañas",
+        "Casta\uFFFDos" to "Castaños",
+        "Cha\uFFFDares" to "Chañares",
+        "De\uFFFDn" to "Deán",
+        "D\uFFFDvalos" to "Dávalos",
+        "D\uFFFDva" to "Dávalos",
+        "Espa\uFFFD" to "España",
+        "Estaci\uFFFDn" to "Estación",
+        "G\uFFFDemes" to "Güemes",
+        "G\uFFFD\uFFFDemes" to "Güemes",
+        "G\uFFFD\uFFFD" to "Güemes",
+        "G\uFFFD" to "Güemes",
+        "Hern\uFFFDn" to "Hernán",
+        "Hip\uFFFDlito" to "Hipólito",
+        "Hoster\uFFFD" to "Hostería",
+        "Iba\uFFFDez" to "Ibáñez",
+        "Iba\uFFFD" to "Ibáñez",
+        "Joaqu\uFFFDn" to "Joaquín",
+        "Lop\uFFFDz" to "López",
+        "L\uFFFDpez" to "López",
+        "Mar\uFFFD" to "María",
+        "Mill\uFFFDn" to "Millán",
+        "Mu\uFFFDoz" to "Muñoz",
+        "Nicol\uFFFDs" to "Nicolás",
+        "N\uFFFDutico" to "Náutico",
+        "Panader\uFFFD" to "Panadería",
+        "Paran\uFFFD" to "Paraná",
+        "Patr\uFFFDn" to "Patrón",
+        "Peque\uFFFDo" to "Pequeño",
+        "Pe\uFFFD" to "Peña",
+        "Pr\uFFFDfugos" to "Prófugos",
+        "Pr\uFFFDstamo" to "Préstamo",
+        "Quebrade\uFFFDo" to "Quebradeño",
+        "Sue\uFFFDos" to "Sueños",
+        "S\uFFFDato" to "Sábato",
+        "Tucum\uFFFD" to "Tucumán",
+        "T\uFFFDpac" to "Túpac",
+        "Vilari\uFFFDo" to "Vilariño",
+        "Vi\uFFFDuelas" to "Viñuelas",
+        "Vi\uFFFDal" to "Viñal",
+        "Vi\uFFFD" to "Viña",
+        "V\uFFFDctor" to "Víctor"
+    )
+
+    // Barrio abbreviation: "B\uFFFD " -> "B° "
+    text = text.replace(Regex("""B\uFFFD(?=\s|$)"""), "B°")
+    text = text.replace("Calle \uFFFD", "Calle Ñ")
+
+    for ((target, replacement) in replacements) {
+        text = text.replace(target, replacement, ignoreCase = true)
+    }
+
+    // Fallback: if between letters, ñ is by far the most frequent in Spanish
+    text = text.replace(Regex("""(?<=\p{L})\uFFFD(?=\p{L})"""), "ñ")
+    // Remove any remaining stray \uFFFD
+    text = text.replace("\uFFFD", "")
+
+    return text.replace(Regex("""\s+"""), " ").trim()
+}
+
+fun computeRouteHash(routeResponse: BusRouteResponse): String {
+    val nodes = routeResponse.nodos ?: return ""
+    val stops = nodes.filter { it.parada }
+    if (stops.isEmpty()) return ""
+    val sb = java.lang.StringBuilder()
+    for (stop in stops) {
+        sb.append(stop.codigoParada?.trim() ?: "").append(';')
+        sb.append(stop.cleanDescripcionParada).append(';')
+        sb.append(stop.latitud).append(';')
+        sb.append(stop.longitud).append('|')
+    }
+    val md = MessageDigest.getInstance("MD5")
+    val digest = md.digest(sb.toString().toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { "%02x".format(it) }
+}
+
 data class BusRouteResponse(
     @SerializedName("error") val error: Int = 0,
     @SerializedName("nodos") val nodos: List<BusNode>? = null
@@ -130,7 +226,10 @@ data class BusNode(
     @SerializedName("parada") val parada: Boolean = false,
     @SerializedName("codigoParada") val codigoParada: String? = null,
     @SerializedName("descripcionParada") val descripcionParada: String? = null
-)
+) {
+    val cleanDescripcionParada: String
+        get() = sanitizeStopDescription(descripcionParada ?: "")
+}
 
 data class BusPosResponse(
     @SerializedName("error") val error: Int = 0,

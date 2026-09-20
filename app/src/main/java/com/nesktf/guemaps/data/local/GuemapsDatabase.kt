@@ -7,8 +7,10 @@ import android.database.sqlite.SQLiteOpenHelper
 import com.google.gson.Gson
 import com.nesktf.guemaps.data.model.BusGroupsResponse
 import com.nesktf.guemaps.data.model.BusRouteResponse
+import com.nesktf.guemaps.data.model.BusStopRecord
 import com.nesktf.guemaps.data.model.FlatBusLine
 import com.nesktf.guemaps.data.model.SavedCard
+import com.nesktf.guemaps.data.model.computeRouteHash
 
 class GuemapsDatabase(
     context: Context,
@@ -17,7 +19,7 @@ class GuemapsDatabase(
 
     companion object {
         const val DATABASE_NAME = "guemaps.db"
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 4
 
         private const val TABLE_BUS_GROUPS = "bus_groups_cache"
         private const val COL_BG_ID = "id"
@@ -27,7 +29,16 @@ class GuemapsDatabase(
         private const val TABLE_BUS_ROUTES = "bus_routes_cache"
         private const val COL_BR_LINE_ID = "line_id"
         private const val COL_BR_JSON = "route_json"
+        private const val COL_BR_ROUTE_HASH = "route_hash"
         private const val COL_BR_UPDATED_AT = "updated_at"
+
+        private const val TABLE_BUS_STOPS = "bus_stops"
+        private const val COL_BS_ID = "id"
+        private const val COL_BS_LINE_ID = "line_id"
+        private const val COL_BS_STOP_CODE = "stop_code"
+        private const val COL_BS_STOP_NAME = "stop_name"
+        private const val COL_BS_LAT = "latitude"
+        private const val COL_BS_LON = "longitude"
 
         private const val TABLE_RECENT_CARDS = "recent_cards"
         private const val COL_RC_CARD_NUMBER = "card_number"
@@ -67,10 +78,28 @@ class GuemapsDatabase(
             CREATE TABLE IF NOT EXISTS $TABLE_BUS_ROUTES (
                 $COL_BR_LINE_ID TEXT PRIMARY KEY,
                 $COL_BR_JSON TEXT NOT NULL,
+                $COL_BR_ROUTE_HASH TEXT NOT NULL DEFAULT '',
                 $COL_BR_UPDATED_AT INTEGER NOT NULL
             )
             """.trimIndent()
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_BUS_STOPS (
+                $COL_BS_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COL_BS_LINE_ID TEXT NOT NULL,
+                $COL_BS_STOP_CODE TEXT NOT NULL,
+                $COL_BS_STOP_NAME TEXT NOT NULL,
+                $COL_BS_LAT REAL NOT NULL,
+                $COL_BS_LON REAL NOT NULL
+            )
+            """.trimIndent()
+        )
+
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_bus_stops_line ON $TABLE_BUS_STOPS ($COL_BS_LINE_ID)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_bus_stops_name ON $TABLE_BUS_STOPS ($COL_BS_STOP_NAME)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_bus_stops_code ON $TABLE_BUS_STOPS ($COL_BS_STOP_CODE)")
 
         db.execSQL(
             """
@@ -105,11 +134,16 @@ class GuemapsDatabase(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_BUS_GROUPS")
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_BUS_ROUTES")
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_RECENT_CARDS")
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_FAVORITE_LINES")
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_FAVORITE_CARDS")
+        if (oldVersion < 3) {
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_BUS_ROUTES")
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_BUS_STOPS")
+        }
+        if (oldVersion < 4) {
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_BUS_STOPS")
+            try {
+                db.execSQL("UPDATE $TABLE_BUS_ROUTES SET $COL_BR_ROUTE_HASH = ''")
+            } catch (_: Exception) {}
+        }
         onCreate(db)
     }
 
@@ -150,16 +184,78 @@ class GuemapsDatabase(
         }
     }
 
-    // --- Bus Routes Cache ---
+    // --- Bus Routes & Stops Cache ---
+
+    fun getStoredRouteHash(lineId: String): String? {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_BUS_ROUTES,
+            arrayOf(COL_BR_ROUTE_HASH),
+            "$COL_BR_LINE_ID = ?",
+            arrayOf(lineId),
+            null,
+            null,
+            null
+        )
+        return cursor.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    }
+
+    /**
+     * Saves route response and synchronizes stops in the database.
+     * Uses computeRouteHash to check if stops changed.
+     * @return true if the route and its stops were updated or inserted, false if identical stops were already stored.
+     */
+    fun saveBusRouteAndSyncStops(lineId: String, routeResponse: BusRouteResponse): Boolean {
+        val newHash = computeRouteHash(routeResponse)
+        val oldHash = getStoredRouteHash(lineId)
+        if (!oldHash.isNullOrEmpty() && oldHash == newHash) {
+            // Route stops have not changed; avoid rebuilding stops table
+            return false
+        }
+
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            // 1. Save or update route cache with new hash
+            val routeValues = ContentValues().apply {
+                put(COL_BR_LINE_ID, lineId)
+                put(COL_BR_JSON, gson.toJson(routeResponse))
+                put(COL_BR_ROUTE_HASH, newHash)
+                put(COL_BR_UPDATED_AT, System.currentTimeMillis())
+            }
+            db.insertWithOnConflict(TABLE_BUS_ROUTES, null, routeValues, SQLiteDatabase.CONFLICT_REPLACE)
+
+            // 2. Remove old stops for this line
+            db.delete(TABLE_BUS_STOPS, "$COL_BS_LINE_ID = ?", arrayOf(lineId))
+
+            // 3. Insert fresh stops
+            val stops = routeResponse.nodos?.filter { it.parada } ?: emptyList()
+            for (stop in stops) {
+                val stopCode = stop.codigoParada?.trim() ?: ""
+                val stopName = stop.cleanDescripcionParada
+                if (stopName.isNotBlank() || stopCode.isNotBlank()) {
+                    val stopValues = ContentValues().apply {
+                        put(COL_BS_LINE_ID, lineId)
+                        put(COL_BS_STOP_CODE, stopCode)
+                        put(COL_BS_STOP_NAME, stopName)
+                        put(COL_BS_LAT, stop.latitud)
+                        put(COL_BS_LON, stop.longitud)
+                    }
+                    db.insert(TABLE_BUS_STOPS, null, stopValues)
+                }
+            }
+
+            db.setTransactionSuccessful()
+            return true
+        } finally {
+            db.endTransaction()
+        }
+    }
 
     fun saveBusRoute(lineId: String, routeResponse: BusRouteResponse) {
-        val db = writableDatabase
-        val values = ContentValues().apply {
-            put(COL_BR_LINE_ID, lineId)
-            put(COL_BR_JSON, gson.toJson(routeResponse))
-            put(COL_BR_UPDATED_AT, System.currentTimeMillis())
-        }
-        db.insertWithOnConflict(TABLE_BUS_ROUTES, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        saveBusRouteAndSyncStops(lineId, routeResponse)
     }
 
     fun getCachedBusRoute(lineId: String): BusRouteResponse? {
@@ -185,6 +281,69 @@ class GuemapsDatabase(
                 null
             }
         }
+    }
+
+    fun searchBusStops(query: String, limit: Int = 60): List<BusStopRecord> {
+        val clean = query.trim()
+        if (clean.isBlank()) return emptyList()
+        val db = readableDatabase
+        val pattern = "%$clean%"
+        val cursor = db.rawQuery(
+            """
+            SELECT $COL_BS_LINE_ID, $COL_BS_STOP_CODE, $COL_BS_STOP_NAME, $COL_BS_LAT, $COL_BS_LON
+            FROM $TABLE_BUS_STOPS
+            WHERE $COL_BS_STOP_NAME LIKE ? OR $COL_BS_STOP_CODE LIKE ?
+            LIMIT ?
+            """.trimIndent(),
+            arrayOf(pattern, pattern, limit.toString())
+        )
+        val list = mutableListOf<BusStopRecord>()
+        cursor.use {
+            while (it.moveToNext()) {
+                list.add(
+                    BusStopRecord(
+                        lineId = it.getString(0),
+                        stopCode = it.getString(1),
+                        stopName = it.getString(2),
+                        latitude = it.getDouble(3),
+                        longitude = it.getDouble(4)
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    fun getAllCachedRouteLineIds(): Set<String> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_BUS_ROUTES,
+            arrayOf(COL_BR_LINE_ID),
+            null,
+            null,
+            null,
+            null,
+            null
+        )
+        val set = mutableSetOf<String>()
+        cursor.use {
+            while (it.moveToNext()) {
+                set.add(it.getString(0))
+            }
+        }
+        return set
+    }
+
+    fun getCachedRoutesCount(): Int {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT COUNT(*) FROM $TABLE_BUS_ROUTES", null)
+        return cursor.use { if (it.moveToFirst()) it.getInt(0) else 0 }
+    }
+
+    fun getCachedStopsCount(): Int {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT COUNT(*) FROM $TABLE_BUS_STOPS", null)
+        return cursor.use { if (it.moveToFirst()) it.getInt(0) else 0 }
     }
 
     // --- Recent Cards ---

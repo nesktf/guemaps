@@ -4,8 +4,16 @@ import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.model.BusGroupNode
 import com.nesktf.guemaps.data.model.BusNode
 import com.nesktf.guemaps.data.model.BusPos
+import com.nesktf.guemaps.data.model.BusStopRecord
 import com.nesktf.guemaps.data.model.FlatBusLine
 import com.nesktf.guemaps.data.remote.SaetaApiClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 
 data class BusGroupsResult(
     val rootGroup: BusGroupNode,
@@ -82,6 +90,70 @@ class BusRepository(
         } else {
             database.addFavoriteLine(line)
             true
+        }
+    }
+
+    fun searchBusStops(query: String, limit: Int = 60): List<BusStopRecord> {
+        return database.searchBusStops(query, limit)
+    }
+
+    fun getCachedRoutesCount(): Int = database.getCachedRoutesCount()
+
+    fun getCachedStopsCount(): Int = database.getCachedStopsCount()
+
+    fun getAllCachedRouteLineIds(): Set<String> = database.getAllCachedRouteLineIds()
+
+    /**
+     * Downloads and stores routes and stops for all lines that are not yet cached.
+     * Invokes onProgress(currentCached, totalLines) after each line is processed.
+     */
+    suspend fun syncAllBusRoutes(
+        lines: List<FlatBusLine>,
+        onProgress: (current: Int, total: Int) -> Unit
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val cachedLineIds = database.getAllCachedRouteLineIds()
+            val toSync = lines.filter { it.codLinea !in cachedLineIds }
+            val total = lines.size
+            var currentCount = cachedLineIds.size
+            onProgress(currentCount, total)
+
+            if (toSync.isEmpty()) {
+                return@withContext Result.success(0)
+            }
+
+            var newRoutesSynced = 0
+            val semaphore = Semaphore(3)
+            val jobs = toSync.map { line ->
+                async {
+                    semaphore.withPermit {
+                        try {
+                            val net = apiClient.fetchBusRoute(line.codLinea)
+                            if (net.isSuccess) {
+                                val resp = net.getOrThrow()
+                                if (resp.nodos != null && resp.nodos.isNotEmpty()) {
+                                    database.saveBusRoute(line.codLinea, resp)
+                                    synchronized(this@BusRepository) {
+                                        newRoutesSynced++
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {
+                            // Non-fatal, continue with other routes
+                        } finally {
+                            synchronized(this@BusRepository) {
+                                currentCount++
+                                onProgress(currentCount, total)
+                            }
+                            delay(50L) // Polite pacing to server
+                        }
+                    }
+                }
+            }
+            jobs.awaitAll()
+            Result.success(newRoutesSynced)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

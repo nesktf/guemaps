@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,8 +74,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.widget.Toast
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,6 +96,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
 import com.nesktf.guemaps.data.model.BusPreset
+import com.nesktf.guemaps.data.model.BusStopRecord
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.nesktf.guemaps.data.model.BusEntry
@@ -126,6 +131,13 @@ fun MapScreen(
     }
 
     val context = LocalContext.current
+
+    LaunchedEffect(state.feedbackMessage) {
+        state.feedbackMessage?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            viewModel.clearFeedbackMessage()
+        }
+    }
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -140,11 +152,6 @@ fun MapScreen(
 
     var showSavePresetDialog by remember { mutableStateOf(false) }
     var presetToDelete by remember { mutableStateOf<BusPreset?>(null) }
-
-    // Intercept back button when line picker bottom sheet is open
-    BackHandler(enabled = state.isLinePickerOpen) {
-        viewModel.setLinePickerOpen(false)
-    }
 
     Box(modifier = modifier.fillMaxSize()) {
         // Map View
@@ -309,7 +316,11 @@ fun MapScreen(
                                             text = line.nombreCorto,
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            modifier = Modifier
+                                                .widthIn(max = 160.dp)
+                                                .basicMarquee()
                                         )
                                         Spacer(modifier = Modifier.width(2.dp))
                                         IconButton(
@@ -436,7 +447,7 @@ fun MapScreen(
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
+                                                    modifier = Modifier.basicMarquee()
                                                 )
                                             }
                                         } else {
@@ -461,20 +472,38 @@ fun MapScreen(
             }
         }
 
-        // About Floating Action Button (Positioned cleanly at Bottom-Left, away from bus selector)
-        FloatingActionButton(
-            onClick = onOpenAbout,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.primary,
+        // Left stack: Toggle Stops and Info buttons (Positioned cleanly at Bottom-Left, away from bus selector)
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(16.dp)
-                .size(44.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Info,
-                contentDescription = "Acerca de"
-            )
+            // Toggle Stops
+            FloatingActionButton(
+                onClick = { viewModel.toggleStops() },
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = if (state.showStops) MaterialTheme.colorScheme.primary else Color.Gray,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    imageVector = if (state.showStops) Icons.Default.Place else Icons.Default.VisibilityOff,
+                    contentDescription = "Toggle Paradas"
+                )
+            }
+
+            // About Floating Action Button
+            FloatingActionButton(
+                onClick = onOpenAbout,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Acerca de"
+                )
+            }
         }
 
         // Floating Action Buttons (Right stack)
@@ -572,19 +601,6 @@ fun MapScreen(
                 }
             }
 
-            // Toggle Stops
-            FloatingActionButton(
-                onClick = { viewModel.toggleStops() },
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = if (state.showStops) MaterialTheme.colorScheme.primary else Color.Gray,
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    imageVector = if (state.showStops) Icons.Default.Place else Icons.Default.VisibilityOff,
-                    contentDescription = "Toggle Paradas"
-                )
-            }
-
             // Refresh Active Buses
             if (state.selectedLines.isNotEmpty()) {
                 FloatingActionButton(
@@ -674,7 +690,8 @@ fun MapScreen(
         if (state.isLinePickerOpen) {
             ModalBottomSheet(
                 onDismissRequest = { viewModel.setLinePickerOpen(false) },
-                sheetState = sheetState
+                sheetState = sheetState,
+                modifier = Modifier.imePadding()
             ) {
                 Column(
                     modifier = Modifier
@@ -730,22 +747,56 @@ fun MapScreen(
                     OutlinedTextField(
                         value = state.searchQuery,
                         onValueChange = { viewModel.setSearchQuery(it) },
-                        placeholder = { Text("Buscar por nombre, corredor o línea...") },
+                        placeholder = { Text("Buscar líneas o paradas...") },
                         leadingIcon = {
                             Icon(Icons.Default.Search, contentDescription = "Buscar")
+                        },
+                        trailingIcon = {
+                            if (state.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.setSearchQuery("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Borrar búsqueda")
+                                }
+                            }
                         },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 12.dp)
+                            .padding(bottom = 8.dp)
                     )
+
+                    if (state.isSyncingStops && state.syncProgressText != null) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = state.syncProgressText ?: "",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
 
                     if (state.isLoadingGroups) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(200.dp),
+                                .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator()
@@ -754,8 +805,10 @@ fun MapScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .weight(1f)
                                 .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
                             Text(
                                 text = state.errorMessage ?: "Error",
@@ -768,29 +821,72 @@ fun MapScreen(
                             }
                         }
                     } else if (state.searchQuery.isNotBlank()) {
-                        // Display search filtered results
-                        Text(
-                            text = "Resultados de búsqueda (${state.filteredLines.size})",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .nestedScroll(noOverscrollConnection),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            items(state.filteredLines) { line ->
-                                val isSelected = state.selectedLines.any { it.codLinea == line.codLinea }
-                                val colorHex = state.activeLines[line.codLinea]?.colorHex
-                                BusLineItem(
-                                    line = line,
-                                    isSelected = isSelected,
-                                    assignedColorHex = colorHex,
-                                    onClick = { viewModel.toggleLineSelection(line) }
+                        if (state.filteredLines.isEmpty() && state.filteredStops.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No se encontraron líneas ni paradas",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .nestedScroll(noOverscrollConnection),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (state.filteredLines.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            text = "Líneas (${state.filteredLines.size})",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        )
+                                    }
+                                    items(state.filteredLines) { line ->
+                                        val isSelected = state.selectedLines.any { it.codLinea == line.codLinea }
+                                        val colorHex = state.activeLines[line.codLinea]?.colorHex
+                                        BusLineItem(
+                                            line = line,
+                                            isSelected = isSelected,
+                                            assignedColorHex = colorHex,
+                                            onClick = { viewModel.toggleLineSelection(line) }
+                                        )
+                                    }
+                                }
+
+                                if (state.filteredStops.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            text = "Paradas (${state.filteredStops.size})",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                        )
+                                    }
+                                    items(state.filteredStops) { (stop, line) ->
+                                        BusStopItem(
+                                            stop = stop,
+                                            line = line,
+                                            onClick = {
+                                                viewModel.addBusLineFromStop(stop)
+                                                viewModel.setLinePickerOpen(false)
+                                                mapActions.animateToLocation(stop.latitude, stop.longitude, 17.5)
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -1313,7 +1409,10 @@ fun BusLineItem(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f, fill = false)
+                        maxLines = 1,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .basicMarquee()
                     )
                     if (isSelected && assignedColorHex != null) {
                         Spacer(modifier = Modifier.width(8.dp))
@@ -1329,6 +1428,62 @@ fun BusLineItem(
                     text = "${line.groupPath} • Línea ${line.codLinea}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun BusStopItem(
+    stop: BusStopRecord,
+    line: FlatBusLine?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Place,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stop.stopName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee()
+                )
+                Text(
+                    text = line?.descripcion ?: "Línea ${stop.lineId}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee()
                 )
             }
         }

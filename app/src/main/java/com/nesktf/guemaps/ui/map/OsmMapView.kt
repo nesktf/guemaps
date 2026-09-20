@@ -102,7 +102,7 @@ fun OsmMapView(
             setMultiTouchControls(true)
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
             controller.setZoom(cameraState.zoomLevel.takeIf { it > 0 } ?: 15.0)
-            controller.setCenter(GeoPoint(cameraState.centerLat, cameraState.centerLon))
+            controller.setCenter(GeoPoint(cameraState.latitude, cameraState.longitude))
 
             // Constrain scrolling and zoom to the Province of Salta
             // North: -21.90, East: -62.30, South: -26.50, West: -68.60
