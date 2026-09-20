@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -138,6 +139,7 @@ fun MapScreen(
     }
 
     var showSavePresetDialog by remember { mutableStateOf(false) }
+    var presetToDelete by remember { mutableStateOf<BusPreset?>(null) }
 
     // Intercept back button when line picker bottom sheet is open
     BackHandler(enabled = state.isLinePickerOpen) {
@@ -1040,7 +1042,7 @@ fun MapScreen(
                                                     Spacer(modifier = Modifier.width(6.dp))
 
                                                     IconButton(
-                                                        onClick = { viewModel.deletePreset(preset.id) },
+                                                        onClick = { presetToDelete = preset },
                                                         modifier = Modifier.size(36.dp)
                                                     ) {
                                                         Icon(
@@ -1168,6 +1170,36 @@ fun MapScreen(
             currentLinesCount = state.selectedLines.size,
             onDismiss = { showSavePresetDialog = false },
             onSave = { name -> viewModel.saveCurrentPreset(name) }
+        )
+    }
+
+    if (presetToDelete != null) {
+        val preset = presetToDelete!!
+        AlertDialog(
+            onDismissRequest = { presetToDelete = null },
+            title = { Text("Eliminar Ajuste") },
+            text = {
+                Text("¿Estás seguro de que querés eliminar el ajuste \"${preset.name}\"?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deletePreset(preset.id)
+                        presetToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { presetToDelete = null }) {
+                    Text("Cancelar")
+                }
+            }
         )
     }
 }

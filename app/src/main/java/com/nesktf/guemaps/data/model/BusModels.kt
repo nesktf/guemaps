@@ -99,7 +99,7 @@ data class FlatBusLine(
             return if (parts.size > 1 && parts[0].trim().length <= 6) {
                 parts[0].trim()
             } else {
-                descripcion.take(12)
+                descripcion.take(32)
             }
         }
 

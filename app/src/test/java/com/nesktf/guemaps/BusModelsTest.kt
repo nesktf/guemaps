@@ -171,6 +171,13 @@ class BusModelsTest {
 
         val line2 = com.nesktf.guemaps.data.model.FlatBusLine("Troncales", "200", "TRONCAL N-S")
         assertEquals("TRONCAL N-S", line2.nombreCorto)
+
+        val line3 = com.nesktf.guemaps.data.model.FlatBusLine("Metropolitano", "515", "Cerrillos - Santa Teresita")
+        assertEquals("Cerrillos - Santa Teresita", line3.nombreCorto)
+
+        val line4 = com.nesktf.guemaps.data.model.FlatBusLine("Larga", "999", "1234567890123456789012345678901234567890")
+        assertEquals(32, line4.nombreCorto.length)
+        assertEquals("12345678901234567890123456789012", line4.nombreCorto)
     }
 
     @Test
