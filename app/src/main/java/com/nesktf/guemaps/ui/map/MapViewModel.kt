@@ -31,6 +31,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.nesktf.guemaps.data.model.BusPreset
+import com.nesktf.guemaps.data.model.computeLineCodesHash
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -68,6 +73,7 @@ data class MapUiState(
     val expandedSubgroups: Set<String> = emptySet(),
     val favoriteLines: List<FlatBusLine> = emptyList(),
     val favoriteLineCodes: Set<String> = emptySet(),
+    val presets: List<BusPreset> = emptyList(),
     val flatLines: List<FlatBusLine> = emptyList(),
     val filteredLines: List<FlatBusLine> = emptyList(),
     val selectedLines: List<FlatBusLine> = emptyList(),
@@ -96,12 +102,14 @@ data class MapUiState(
 class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
+        const val MAX_SELECTED_LINES = 4
         const val POLLING_INTERVAL_MS = 10_000L // 10 seconds polling interval
         private const val PREFS_NAME = "guemaps_prefs"
         private const val KEY_LAST_LINE_CODE = "last_line_code"
         private const val KEY_LAST_LINE_DESC = "last_line_desc"
         private const val KEY_LAST_LINE_PATH = "last_line_path"
         private const val KEY_SELECTED_LINES_JSON = "selected_lines_json"
+        private const val KEY_PRESETS_JSON = "bus_presets_json"
     }
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -120,16 +128,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         val apiClient = SaetaApiClient()
         repository = BusRepository(apiClient, database)
 
-        // Load favorites
-        loadFavoriteLines()
+        // Load presets
+        loadPresets()
 
         // Restore saved selected lines on boot
         val savedLines = getSavedSelectedLines()
         if (savedLines.isNotEmpty()) {
             var colorIndex = 0
             val activeMap = mutableMapOf<String, ActiveLineData>()
+            val palette = BUS_LINE_PALETTE.take(MAX_SELECTED_LINES)
             savedLines.forEach { line ->
-                val color = BUS_LINE_PALETTE[colorIndex % BUS_LINE_PALETTE.size]
+                val color = palette[colorIndex % palette.size]
                 colorIndex++
                 activeMap[line.codLinea] = ActiveLineData(
                     line = line,
@@ -155,6 +164,115 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         loadBusGroups()
     }
 
+    fun clearAllLines() {
+        busPollingJob?.cancel()
+        saveSelectedLines(emptyList())
+        _uiState.update {
+            it.copy(
+                selectedLines = emptyList(),
+                activeLines = emptyMap(),
+                selectedLine = null,
+                routeNodes = emptyList(),
+                activeBuses = emptyList(),
+                busLiveDetails = emptyMap(),
+                selectedBusInterno = null,
+                errorMessage = null,
+                isLoadingRoute = false
+            )
+        }
+    }
+
+    fun loadPresets() {
+        viewModelScope.launch {
+            val json = prefs.getString(KEY_PRESETS_JSON, null)
+            val presetsList: List<BusPreset> = if (!json.isNullOrBlank()) {
+                try {
+                    val type = object : TypeToken<List<BusPreset>>() {}.type
+                    Gson().fromJson(json, type) ?: emptyList()
+                } catch (e: Exception) {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+            _uiState.update { it.copy(presets = presetsList) }
+        }
+    }
+
+    private fun savePresets(presets: List<BusPreset>) {
+        val json = Gson().toJson(presets)
+        prefs.edit().putString(KEY_PRESETS_JSON, json).apply()
+        _uiState.update { it.copy(presets = presets) }
+    }
+
+    fun saveCurrentPreset(name: String): Result<BusPreset> {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) {
+            return Result.failure(IllegalArgumentException("El nombre no puede estar vacío"))
+        }
+        val currentLines = _uiState.value.selectedLines
+        if (currentLines.isEmpty()) {
+            return Result.failure(IllegalStateException("No hay líneas seleccionadas para guardar"))
+        }
+
+        val canonicalHash = computeLineCodesHash(currentLines)
+        val existingPreset = _uiState.value.presets.find { it.lineCodesHash == canonicalHash }
+        if (existingPreset != null) {
+            return Result.failure(IllegalStateException("Ya existe un ajuste guardado con estas líneas: \"${existingPreset.name}\""))
+        }
+
+        val newPreset = BusPreset(
+            id = UUID.randomUUID().toString(),
+            name = trimmedName,
+            lineCodesHash = canonicalHash,
+            lines = currentLines,
+            createdAt = System.currentTimeMillis()
+        )
+
+        val updated = _uiState.value.presets + newPreset
+        savePresets(updated)
+        return Result.success(newPreset)
+    }
+
+    fun deletePreset(presetId: String) {
+        val updated = _uiState.value.presets.filter { it.id != presetId }
+        savePresets(updated)
+    }
+
+    fun loadPreset(preset: BusPreset) {
+        val linesToLoad = preset.lines.take(MAX_SELECTED_LINES)
+        busPollingJob?.cancel()
+        saveSelectedLines(linesToLoad)
+
+        val palette = BUS_LINE_PALETTE.take(MAX_SELECTED_LINES)
+        val newActiveMap = mutableMapOf<String, ActiveLineData>()
+        linesToLoad.forEachIndexed { index, line ->
+            val color = palette[index % palette.size]
+            newActiveMap[line.codLinea] = ActiveLineData(
+                line = line,
+                colorHex = color,
+                isLoadingRoute = true
+            )
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedLines = linesToLoad,
+                activeLines = newActiveMap,
+                selectedLine = linesToLoad.firstOrNull(),
+                routeNodes = emptyList(),
+                activeBuses = emptyList(),
+                busLiveDetails = emptyMap(),
+                errorMessage = null,
+                shouldFitRouteBounds = true,
+                isLinePickerOpen = false
+            )
+        }
+
+        linesToLoad.forEach { loadRouteForLine(it.codLinea) }
+        restartActiveBusesPolling()
+    }
+
     fun loadFavoriteLines() {
         viewModelScope.launch {
             val favs = repository.getFavoriteLines()
@@ -176,7 +294,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun assignNextColor(currentActiveLines: Map<String, ActiveLineData>): String {
         val usedColors = currentActiveLines.values.map { it.colorHex }.toSet()
-        return BUS_LINE_PALETTE.firstOrNull { it !in usedColors } ?: BUS_LINE_PALETTE.first()
+        val palette = BUS_LINE_PALETTE.take(MAX_SELECTED_LINES)
+        return palette.firstOrNull { it !in usedColors }
+            ?: palette[currentActiveLines.size % palette.size]
     }
 
     private fun saveSelectedLines(lines: List<FlatBusLine>) {
@@ -213,7 +333,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     )
                 }
-                if (list.isNotEmpty()) return list.take(8)
+                if (list.isNotEmpty()) return list.take(MAX_SELECTED_LINES)
             } catch (_: Exception) {}
         }
         val single = getSavedSelectedLine()
@@ -298,8 +418,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 busPollingJob?.cancel()
             }
         } else {
-            if (state.selectedLines.size >= 8) {
-                _uiState.update { it.copy(errorMessage = "Máximo 8 líneas permitidas al mismo tiempo") }
+            if (state.selectedLines.size >= MAX_SELECTED_LINES) {
+                _uiState.update { it.copy(errorMessage = "Máximo $MAX_SELECTED_LINES líneas permitidas al mismo tiempo") }
                 return
             }
 

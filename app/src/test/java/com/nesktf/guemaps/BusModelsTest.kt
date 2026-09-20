@@ -186,5 +186,52 @@ class BusModelsTest {
         assertEquals("101", restored[0].codLinea)
         assertEquals("102", restored[1].codLinea)
     }
+
+    @Test
+    fun testComputeLineCodesHashOrderIndependent() {
+        val lineA = com.nesktf.guemaps.data.model.FlatBusLine("Corredor 1", "101", "1A")
+        val lineB = com.nesktf.guemaps.data.model.FlatBusLine("Corredor 2", "105", "2B")
+        val lineC = com.nesktf.guemaps.data.model.FlatBusLine("Corredor 3", "110", "3C")
+
+        val hash1 = com.nesktf.guemaps.data.model.computeLineCodesHash(listOf(lineA, lineB, lineC))
+        val hash2 = com.nesktf.guemaps.data.model.computeLineCodesHash(listOf(lineC, lineA, lineB))
+        val hash3 = com.nesktf.guemaps.data.model.computeLineCodesHash(listOf(lineB, lineC, lineA))
+
+        assertEquals("101|105|110", hash1)
+        assertEquals(hash1, hash2)
+        assertEquals(hash1, hash3)
+
+        // Different lines should have different hash
+        val lineD = com.nesktf.guemaps.data.model.FlatBusLine("Corredor 4", "115", "4D")
+        val hash4 = com.nesktf.guemaps.data.model.computeLineCodesHash(listOf(lineA, lineB, lineD))
+        org.junit.Assert.assertNotEquals(hash1, hash4)
+    }
+
+    @Test
+    fun testBusPresetSerialization() {
+        val lines = listOf(
+            com.nesktf.guemaps.data.model.FlatBusLine("Corredor 2", "105", "2B"),
+            com.nesktf.guemaps.data.model.FlatBusLine("Corredor 1", "101", "1A")
+        )
+        val hash = com.nesktf.guemaps.data.model.computeLineCodesHash(lines)
+        val preset = com.nesktf.guemaps.data.model.BusPreset(
+            id = "preset-1",
+            name = "Trabajo",
+            lineCodesHash = hash,
+            lines = lines,
+            createdAt = 123456789L
+        )
+
+        val json = gson.toJson(preset)
+        val restored = gson.fromJson(json, com.nesktf.guemaps.data.model.BusPreset::class.java)
+
+        assertEquals("preset-1", restored.id)
+        assertEquals("Trabajo", restored.name)
+        assertEquals("101|105", restored.lineCodesHash)
+        assertEquals(2, restored.lines.size)
+        // Original order is preserved in lines
+        assertEquals("105", restored.lines[0].codLinea)
+        assertEquals("101", restored.lines[1].codLinea)
+    }
 }
 

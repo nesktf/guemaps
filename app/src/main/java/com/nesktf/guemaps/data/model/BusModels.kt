@@ -107,6 +107,18 @@ data class FlatBusLine(
         get() = descripcion
 }
 
+data class BusPreset(
+    val id: String,
+    val name: String,
+    val lineCodesHash: String,
+    val lines: List<FlatBusLine>,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+fun computeLineCodesHash(lines: List<FlatBusLine>): String {
+    return lines.map { it.codLinea.trim() }.sorted().joinToString("|")
+}
+
 data class BusRouteResponse(
     @SerializedName("error") val error: Int = 0,
     @SerializedName("nodos") val nodos: List<BusNode>? = null
