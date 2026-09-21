@@ -71,7 +71,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
+import com.nesktf.guemaps.R
 import com.nesktf.guemaps.data.model.SellingPoint
 import com.nesktf.guemaps.ui.map.MapActions
 
@@ -148,7 +150,7 @@ fun SellingPointsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Puntos de venta",
+                                text = stringResource(R.string.selling_points_title),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
@@ -170,7 +172,7 @@ fun SellingPointsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Search,
-                                contentDescription = "Buscar punto de venta",
+                                contentDescription = stringResource(R.string.selling_points_search_icon_desc),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -189,7 +191,7 @@ fun SellingPointsScreen(
                             onClick = { viewModel.setFilter(SellingPointFilter.ALL) },
                             label = {
                                 Text(
-                                    text = "Todos (${state.sellingPoints.size})",
+                                    text = stringResource(R.string.selling_points_filter_all, state.sellingPoints.size),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 11.sp,
                                     maxLines = 1,
@@ -207,7 +209,7 @@ fun SellingPointsScreen(
                             onClick = { viewModel.setFilter(SellingPointFilter.ATM) },
                             label = {
                                 Text(
-                                    text = "ATMs (${state.atmCount})",
+                                    text = stringResource(R.string.selling_points_filter_atm, state.atmCount),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 11.sp,
                                     maxLines = 1,
@@ -225,7 +227,7 @@ fun SellingPointsScreen(
                             onClick = { viewModel.setFilter(SellingPointFilter.COMMERCE) },
                             label = {
                                 Text(
-                                    text = "Comercios (${state.commerceCount})",
+                                    text = stringResource(R.string.selling_points_filter_commerce, state.commerceCount),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 11.sp,
                                     maxLines = 1,
@@ -282,7 +284,7 @@ fun SellingPointsScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Info,
-                    contentDescription = "Acerca de"
+                    contentDescription = stringResource(R.string.action_about)
                 )
             }
         }
@@ -303,7 +305,7 @@ fun SellingPointsScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Acercar mapa"
+                    contentDescription = stringResource(R.string.action_zoom_in)
                 )
             }
 
@@ -316,7 +318,7 @@ fun SellingPointsScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Remove,
-                    contentDescription = "Alejar mapa"
+                    contentDescription = stringResource(R.string.action_zoom_out)
                 )
             }
 
@@ -329,7 +331,7 @@ fun SellingPointsScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.CenterFocusStrong,
-                    contentDescription = "Restablecer mapa"
+                    contentDescription = stringResource(R.string.action_reset_map)
                 )
             }
 
@@ -377,7 +379,7 @@ fun SellingPointsScreen(
                 } else {
                     Icon(
                         imageVector = Icons.Default.MyLocation,
-                        contentDescription = "Mi ubicación"
+                        contentDescription = stringResource(R.string.action_my_location)
                     )
                 }
             }
@@ -405,7 +407,7 @@ fun SellingPointsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Puntos de Venta",
+                            text = stringResource(R.string.selling_points_title),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -414,7 +416,7 @@ fun SellingPointsScreen(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
-                                text = "${state.searchResults.size} puntos",
+                                text = stringResource(R.string.selling_points_count_badge, state.searchResults.size),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -427,14 +429,14 @@ fun SellingPointsScreen(
                     OutlinedTextField(
                         value = state.searchQuery,
                         onValueChange = { viewModel.setSearchQuery(it) },
-                        placeholder = { Text("Buscar por nombre o dirección...") },
+                        placeholder = { Text(stringResource(R.string.selling_points_search_placeholder)) },
                         leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = "Buscar")
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.action_search))
                         },
                         trailingIcon = {
                             if (state.searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Borrar búsqueda")
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_clear_search))
                                 }
                             }
                         },
@@ -455,9 +457,9 @@ fun SellingPointsScreen(
                         ) {
                             Text(
                                 text = if (state.searchQuery.isNotBlank()) {
-                                    "No se encontraron puntos para \"${state.searchQuery}\""
+                                    stringResource(R.string.selling_points_empty_search, state.searchQuery)
                                 } else {
-                                    "No hay puntos de venta disponibles"
+                                    stringResource(R.string.selling_points_empty_list)
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -524,7 +526,7 @@ fun SellingPointsScreen(
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
                                                 Text(
-                                                    text = point.nombre.ifBlank { "Punto de Venta" },
+                                                    text = point.nombre.ifBlank { stringResource(R.string.selling_points_default_name) },
                                                     style = MaterialTheme.typography.titleSmall,
                                                     fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.onSurface,
@@ -540,7 +542,7 @@ fun SellingPointsScreen(
                                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                                 ) {
                                                     Text(
-                                                        text = if (point.isAtm) "ATM" else "Comercio",
+                                                        text = if (point.isAtm) stringResource(R.string.selling_points_badge_atm) else stringResource(R.string.selling_points_badge_commerce),
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontWeight = FontWeight.Bold,
                                                         color = badgeText
@@ -636,7 +638,7 @@ fun SellingPointDetailCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Cerrar",
+                        contentDescription = stringResource(R.string.action_close),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
@@ -647,7 +649,7 @@ fun SellingPointDetailCard(
 
             // Store Name
             Text(
-                text = point.nombre.ifBlank { "Punto de Venta" },
+                text = point.nombre.ifBlank { stringResource(R.string.selling_points_default_name) },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -710,7 +712,7 @@ fun SellingPointDetailCard(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Centrar en mapa",
+                    text = stringResource(R.string.selling_points_center_map),
                     style = MaterialTheme.typography.labelMedium
                 )
             }

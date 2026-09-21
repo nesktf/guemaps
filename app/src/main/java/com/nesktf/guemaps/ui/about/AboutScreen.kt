@@ -41,6 +41,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+import androidx.compose.ui.res.stringResource
+import com.nesktf.guemaps.R
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(
@@ -56,12 +59,12 @@ fun AboutScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Acerca de", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(id = R.string.about_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Volver"
+                            contentDescription = stringResource(id = R.string.action_back)
                         )
                     }
                 },
@@ -91,7 +94,7 @@ fun AboutScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.DirectionsBus,
-                    contentDescription = "Güemaps",
+                    contentDescription = stringResource(id = R.string.app_name),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(50.dp)
                 )
@@ -99,12 +102,12 @@ fun AboutScreen(
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "Güemaps",
+                    text = stringResource(id = R.string.app_name),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Versión 1.0 (Build 2026)",
+                    text = stringResource(id = R.string.about_version),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -130,12 +133,12 @@ fun AboutScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Image,
-                            contentDescription = "Placeholder de imagen",
+                            contentDescription = stringResource(id = R.string.about_banner_description),
                             tint = MaterialTheme.colorScheme.outline,
                             modifier = Modifier.size(48.dp)
                         )
                         Text(
-                            text = "[ Imagen / Banner Placeholder ]",
+                            text = stringResource(id = R.string.about_banner_placeholder),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -162,19 +165,19 @@ fun AboutScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Descripción del Proyecto",
+                            text = stringResource(id = R.string.about_project_desc_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
                     Text(
-                        text = "Güemaps es una aplicación orientada a la visualización de líneas de transporte urbano e interurbano en Salta, Argentina, y a la consulta de saldo de tarjetas de transporte mediante OpenStreetMap.",
+                        text = stringResource(id = R.string.about_project_desc_text),
                         style = MaterialTheme.typography.bodyMedium
                     )
 
                     Text(
-                        text = "[Texto placeholder: Aquí puedes completar manualmente más información acerca del desarrollo, características, tecnologías utilizadas, contacto y notas adicionales.]",
+                        text = stringResource(id = R.string.about_project_notes),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -192,13 +195,13 @@ fun AboutScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "Créditos y Licencias",
+                        text = stringResource(id = R.string.about_credits_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
 
                     Text(
-                        text = "• Mapas y capas base: OpenStreetMap (OSM) y OpenStreetMap contributors.\n• Biblioteca de mapas: osmdroid.\n• Datos de transporte y saldo: SAETA / MiRedBus.\n• Licencia: [Espacio para especificar licencia o términos].",
+                        text = stringResource(id = R.string.about_credits_text),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

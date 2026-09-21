@@ -63,6 +63,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
+import androidx.compose.ui.res.stringResource
+import com.nesktf.guemaps.R
+
 @Composable
 fun BalanceScreen(
     viewModel: BalanceViewModel,
@@ -91,12 +94,12 @@ fun BalanceScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Consulta de Saldo",
+                    text = stringResource(id = R.string.balance_title),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Tarjeta de transporte SAETA",
+                    text = stringResource(id = R.string.balance_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -104,7 +107,7 @@ fun BalanceScreen(
             IconButton(onClick = onOpenAbout) {
                 Icon(
                     imageVector = Icons.Default.Info,
-                    contentDescription = "Acerca de",
+                    contentDescription = stringResource(id = R.string.action_about),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -123,9 +126,9 @@ fun BalanceScreen(
                 OutlinedTextField(
                     value = state.cardNumber,
                     onValueChange = { viewModel.onCardNumberChanged(it) },
-                    label = { Text("Número de tarjeta") },
+                    label = { Text(stringResource(id = R.string.balance_card_number_label)) },
                     leadingIcon = {
-                        Icon(Icons.Default.CreditCard, contentDescription = "Tarjeta")
+                        Icon(Icons.Default.CreditCard, contentDescription = stringResource(id = R.string.balance_card_icon_desc))
                     },
                     trailingIcon = {
                         if (state.cardNumber.isNotBlank()) {
@@ -133,7 +136,7 @@ fun BalanceScreen(
                             IconButton(onClick = { viewModel.toggleFavoriteCard(state.cardNumber) }) {
                                 Icon(
                                     imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
-                                    contentDescription = if (isFav) "Quitar de favoritas" else "Guardar en favoritas",
+                                    contentDescription = if (isFav) stringResource(id = R.string.balance_favorite_remove) else stringResource(id = R.string.balance_favorite_add),
                                     tint = if (isFav) Color(0xFFF59E0B) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -156,13 +159,13 @@ fun BalanceScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Star,
-                            contentDescription = "Favoritas",
+                            contentDescription = stringResource(id = R.string.balance_favorites_prefix),
                             tint = Color(0xFFF59E0B),
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Favoritas:",
+                            text = stringResource(id = R.string.balance_favorites_prefix),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -196,13 +199,13 @@ fun BalanceScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.History,
-                            contentDescription = "Recientes",
+                            contentDescription = stringResource(id = R.string.balance_recents_prefix),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Recientes:",
+                            text = stringResource(id = R.string.balance_recents_prefix),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -230,7 +233,7 @@ fun BalanceScreen(
 
                 // Captcha Section
                 Text(
-                    text = "Verificación de seguridad",
+                    text = stringResource(id = R.string.balance_security_check_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -260,7 +263,7 @@ fun BalanceScreen(
                             )
                         } else {
                             Text(
-                                text = "Sin imagen",
+                                text = stringResource(id = R.string.balance_captcha_no_image),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.Gray
                             )
@@ -274,7 +277,7 @@ fun BalanceScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Recargar captcha",
+                            contentDescription = stringResource(id = R.string.balance_reload_captcha),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -284,9 +287,9 @@ fun BalanceScreen(
                 OutlinedTextField(
                     value = state.captchaInput,
                     onValueChange = { viewModel.onCaptchaInputChanged(it) },
-                    label = { Text("Código de la imagen") },
+                    label = { Text(stringResource(id = R.string.balance_captcha_code_label)) },
                     leadingIcon = {
-                        Icon(Icons.Default.Security, contentDescription = "Captcha")
+                        Icon(Icons.Default.Security, contentDescription = stringResource(id = R.string.balance_captcha_desc))
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
@@ -323,7 +326,7 @@ fun BalanceScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Warning,
-                            contentDescription = "Atención",
+                            contentDescription = stringResource(id = R.string.balance_warning_title),
                             tint = if (isDark) Color(0xFFFBBF24) else Color(0xFFD97706),
                             modifier = Modifier
                                 .size(20.dp)
@@ -335,13 +338,13 @@ fun BalanceScreen(
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = "Atención",
+                                text = stringResource(id = R.string.balance_warning_title),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color(0xFFFDE68A) else Color(0xFF92400E)
                             )
                             Text(
-                                text = "Si usted ha realizado una recarga últimamente, por favor asegurese de haberla utilizado en un colectivo de la línea antes de realizar una consulta. Los datos pueden tardar unas cuantas horas en refrescarse una vez utilizada la tarjeta, asegurese de revisar la fecha de última actualización.",
+                                text = stringResource(id = R.string.balance_warning_text),
                                 style = MaterialTheme.typography.bodySmall,
                                 lineHeight = 17.sp,
                                 color = if (isDark) Color(0xFFFEF3C7) else Color(0xFF78350F)
@@ -363,7 +366,7 @@ fun BalanceScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ErrorOutline,
-                                contentDescription = "Error",
+                                contentDescription = null,
                                 tint = MaterialTheme.colorScheme.onErrorContainer,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -398,7 +401,7 @@ fun BalanceScreen(
                         )
                     } else {
                         Text(
-                            text = "Consultar Saldo",
+                            text = stringResource(id = R.string.balance_check_button),
                             style = MaterialTheme.typography.titleMedium
                         )
                     }
@@ -430,7 +433,7 @@ fun BalanceScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Tarifas",
+                            text = stringResource(id = R.string.balance_tarifas_title),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -488,13 +491,13 @@ fun BalanceScreen(
                     }
                 } else if (state.isLoadingTarifas) {
                     Text(
-                        text = "Cargando tarifas vigentes...",
+                        text = stringResource(id = R.string.balance_tarifas_loading),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else if (!state.tarifasError.isNullOrBlank()) {
                     Text(
-                        text = "No se pudieron obtener las tarifas",
+                        text = stringResource(id = R.string.balance_tarifas_error),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -530,7 +533,7 @@ fun BalanceScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Resultado de Saldo",
+                            text = stringResource(id = R.string.balance_dialog_title),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -540,7 +543,7 @@ fun BalanceScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Cerrar",
+                                contentDescription = stringResource(id = R.string.action_close),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -553,7 +556,7 @@ fun BalanceScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Tarjeta #${balance.nroExternoTarjeta ?: state.cardNumber}",
+                            text = stringResource(id = R.string.balance_dialog_card_prefix, balance.nroExternoTarjeta ?: state.cardNumber),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -565,7 +568,7 @@ fun BalanceScreen(
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(
-                                text = balance.estado ?: "DESCONOCIDO",
+                                text = balance.estado ?: stringResource(id = R.string.balance_dialog_status_unknown),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (isActiva) Color(0xFF15803D) else Color(0xFFB91C1C),
                                 fontWeight = FontWeight.Bold,
@@ -576,7 +579,7 @@ fun BalanceScreen(
 
                     if (!balance.tipoTarjeta.isNullOrBlank()) {
                         Text(
-                            text = "Tipo: ${balance.tipoTarjeta}",
+                            text = stringResource(id = R.string.balance_dialog_type_prefix, balance.tipoTarjeta),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -597,7 +600,7 @@ fun BalanceScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = monedero.nombre ?: "Saldo",
+                                        text = monedero.nombre ?: stringResource(id = R.string.balance_dialog_default_wallet),
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Medium
                                     )
@@ -615,7 +618,7 @@ fun BalanceScreen(
 
                     // Last updated date
                     Text(
-                        text = "Última actualización: ${balance.getFormattedDate()}",
+                        text = stringResource(id = R.string.balance_dialog_last_update, balance.getFormattedDate()),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -628,7 +631,7 @@ fun BalanceScreen(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Cerrar")
+                        Text(stringResource(id = R.string.action_close))
                     }
                 }
             }

@@ -8,6 +8,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.res.stringResource
+import com.nesktf.guemaps.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -116,18 +118,18 @@ private fun NewsListView(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Noticias",
+                    text = stringResource(id = R.string.news_title),
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Novedades del servicio SAETA",
+                    text = stringResource(id = R.string.news_subtitle),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             IconButton(onClick = onOpenAbout) {
-                Icon(Icons.Default.Info, contentDescription = "Acerca de")
+                Icon(Icons.Default.Info, contentDescription = stringResource(id = R.string.action_about))
             }
         }
 
@@ -145,7 +147,7 @@ private fun NewsListView(
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Cargando noticias...",
+                            text = stringResource(id = R.string.news_loading),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -280,7 +282,7 @@ private fun NewsArticleCard(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = "NUEVA",
+                                    text = stringResource(id = R.string.news_badge_new),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold
@@ -320,7 +322,7 @@ private fun NewsArticleCard(
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Ver noticia", style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(id = R.string.news_action_view), style = MaterialTheme.typography.labelMedium)
             }
         }
     }
@@ -352,11 +354,11 @@ private fun NewsDetailView(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver a noticias")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(id = R.string.news_action_back_to_news))
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Volver a noticias",
+                text = stringResource(id = R.string.news_action_back_to_news),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -411,7 +413,7 @@ private fun NewsDetailView(
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Cargando contenido completo...",
+                    text = stringResource(id = R.string.news_loading_detail),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

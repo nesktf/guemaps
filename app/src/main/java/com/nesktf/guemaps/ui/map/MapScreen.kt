@@ -96,11 +96,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Velocity
-import com.nesktf.guemaps.data.model.BusPreset
-import com.nesktf.guemaps.data.model.BusStopRecord
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.nesktf.guemaps.R
 import com.nesktf.guemaps.data.model.BusEntry
+import com.nesktf.guemaps.data.model.BusPreset
+import com.nesktf.guemaps.data.model.BusStopRecord
 import com.nesktf.guemaps.data.model.FlatBusLine
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -203,13 +205,13 @@ fun MapScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.CloudOff,
-                            contentDescription = "Offline",
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Modo sin conexión: visualizando datos guardados",
+                            text = stringResource(R.string.map_offline_mode),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -234,14 +236,18 @@ fun MapScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.DirectionsBus,
-                            contentDescription = "Líneas",
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(26.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (state.selectedLines.isEmpty()) "Seleccionar Líneas" else "Líneas Activas (${state.selectedLines.size}/4)",
+                                text = if (state.selectedLines.isEmpty()) {
+                                    stringResource(R.string.map_select_lines)
+                                } else {
+                                    stringResource(R.string.map_active_lines_title, state.selectedLines.size, 4)
+                                },
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -249,7 +255,7 @@ fun MapScreen(
                             )
                             if (state.selectedLines.isEmpty()) {
                                 Text(
-                                    text = "Toque aquí para agregar hasta 4 colectivos",
+                                    text = stringResource(R.string.map_touch_to_add_lines),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -271,7 +277,7 @@ fun MapScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "Limpiar todas las líneas",
+                                    contentDescription = stringResource(R.string.map_clear_all_lines),
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -284,7 +290,7 @@ fun MapScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = "Agregar línea",
+                                contentDescription = stringResource(R.string.map_add_line),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -338,7 +344,7 @@ fun MapScreen(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Close,
-                                                contentDescription = "Quitar línea",
+                                                contentDescription = stringResource(R.string.map_remove_line),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(14.dp)
                                             )
@@ -399,7 +405,7 @@ fun MapScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
-                                        contentDescription = "Cerrar",
+                                        contentDescription = stringResource(R.string.action_close),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -457,14 +463,14 @@ fun MapScreen(
                                             }
                                         } else {
                                             Text(
-                                                text = "Calculando a tu parada...",
+                                                text = stringResource(R.string.map_bus_card_calculating_stop),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     } else {
                                         Text(
-                                            text = "GPS inactivo (distancia a tu parada)",
+                                            text = stringResource(R.string.map_bus_card_gps_inactive_stop),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -487,7 +493,7 @@ fun MapScreen(
                                     text = if (state.selectedReferenceStop != null || state.userLocation != null) {
                                         liveDetail.formatEstimatedArrivalSummary()
                                     } else {
-                                        "GPS inactivo (tiempo de espera)"
+                                        stringResource(R.string.map_bus_card_gps_inactive_wait)
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
@@ -521,7 +527,7 @@ fun MapScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.NearMe,
-                    contentDescription = "Seleccionar parada más cercana"
+                    contentDescription = stringResource(R.string.map_select_nearest_stop)
                 )
             }
 
@@ -534,7 +540,7 @@ fun MapScreen(
             ) {
                 Icon(
                     imageVector = if (state.showStops) Icons.Default.Place else Icons.Default.VisibilityOff,
-                    contentDescription = "Toggle Paradas"
+                    contentDescription = stringResource(R.string.map_toggle_stops)
                 )
             }
 
@@ -547,7 +553,7 @@ fun MapScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Info,
-                    contentDescription = "Acerca de"
+                    contentDescription = stringResource(R.string.action_about)
                 )
             }
         }
@@ -568,7 +574,7 @@ fun MapScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Acercar mapa"
+                    contentDescription = stringResource(R.string.action_zoom_in)
                 )
             }
 
@@ -581,7 +587,7 @@ fun MapScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Remove,
-                    contentDescription = "Alejar mapa"
+                    contentDescription = stringResource(R.string.action_zoom_out)
                 )
             }
 
@@ -594,7 +600,7 @@ fun MapScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.CenterFocusStrong,
-                    contentDescription = "Restablecer mapa"
+                    contentDescription = stringResource(R.string.action_reset_map)
                 )
             }
 
@@ -642,7 +648,7 @@ fun MapScreen(
                 } else {
                     Icon(
                         imageVector = Icons.Default.MyLocation,
-                        contentDescription = "Mi ubicación"
+                        contentDescription = stringResource(R.string.action_my_location)
                     )
                 }
             }
@@ -657,7 +663,7 @@ fun MapScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Recargar colectivos"
+                        contentDescription = stringResource(R.string.map_reload_buses)
                     )
                 }
             }
@@ -719,11 +725,21 @@ fun MapScreen(
                         val linesCount = state.selectedLines.size
                         Text(
                             text = when {
-                                state.isLoadingBuses -> "Actualizando posiciones..."
+                                state.isLoadingBuses -> stringResource(R.string.map_updating_positions)
                                 state.busesErrorMessage != null -> state.busesErrorMessage ?: ""
-                                totalBuses == 0 -> "No hay colectivos activos ($linesCount ${if (linesCount == 1) "línea" else "líneas"})"
-                                totalBuses == 1 -> "1 colectivo activo en $linesCount ${if (linesCount == 1) "línea" else "líneas"}${if (rampBuses == 1) " (con rampa ♿)" else ""}"
-                                else -> "$totalBuses colectivos activos en $linesCount ${if (linesCount == 1) "línea" else "líneas"} ($rampBuses con rampa ♿)"
+                                totalBuses == 0 -> {
+                                    val unitLine = if (linesCount == 1) stringResource(R.string.map_unit_line_singular) else stringResource(R.string.map_unit_line_plural)
+                                    stringResource(R.string.map_no_active_buses, linesCount, unitLine)
+                                }
+                                totalBuses == 1 -> {
+                                    val unitLine = if (linesCount == 1) stringResource(R.string.map_unit_line_singular) else stringResource(R.string.map_unit_line_plural)
+                                    val rampSuffix = if (rampBuses == 1) stringResource(R.string.map_with_ramp_suffix) else ""
+                                    stringResource(R.string.map_one_active_bus, linesCount, unitLine, rampSuffix)
+                                }
+                                else -> {
+                                    val unitLine = if (linesCount == 1) stringResource(R.string.map_unit_line_singular) else stringResource(R.string.map_unit_line_plural)
+                                    stringResource(R.string.map_multiple_active_buses, totalBuses, linesCount, unitLine, rampBuses)
+                                }
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -755,7 +771,7 @@ fun MapScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Obteniendo ubicación GPS...",
+                            text = stringResource(R.string.map_getting_gps),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -785,7 +801,7 @@ fun MapScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Seleccionar Líneas",
+                            text = stringResource(R.string.line_picker_title),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f)
@@ -795,7 +811,7 @@ fun MapScreen(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
-                                text = "${state.selectedLines.size}/4 seleccionadas",
+                                text = stringResource(R.string.line_picker_selected_count, state.selectedLines.size),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = if (state.selectedLines.size >= 4) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
@@ -825,14 +841,14 @@ fun MapScreen(
                     OutlinedTextField(
                         value = state.searchQuery,
                         onValueChange = { viewModel.setSearchQuery(it) },
-                        placeholder = { Text("Buscar líneas o paradas...") },
+                        placeholder = { Text(stringResource(R.string.map_search_placeholder)) },
                         leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = "Buscar")
+                            Icon(Icons.Default.Search, contentDescription = stringResource(R.string.action_search))
                         },
                         trailingIcon = {
                             if (state.searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Borrar búsqueda")
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_clear_search))
                                 }
                             }
                         },
@@ -889,13 +905,13 @@ fun MapScreen(
                             verticalArrangement = Arrangement.Center
                         ) {
                             Text(
-                                text = state.errorMessage ?: "Error",
+                                text = state.errorMessage ?: "",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.error
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             TextButton(onClick = { viewModel.loadBusGroups(forceNetwork = true) }) {
-                                Text("Reintentar")
+                                Text(stringResource(R.string.action_retry))
                             }
                         }
                     } else if (state.searchQuery.isNotBlank()) {
@@ -908,7 +924,7 @@ fun MapScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "No se encontraron líneas ni paradas",
+                                    text = stringResource(R.string.line_picker_empty_search, state.searchQuery),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -924,7 +940,7 @@ fun MapScreen(
                                 if (state.filteredLines.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = "Líneas (${state.filteredLines.size})",
+                                            text = stringResource(R.string.line_picker_search_lines, state.filteredLines.size),
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,
@@ -946,7 +962,7 @@ fun MapScreen(
                                 if (state.filteredStops.isNotEmpty()) {
                                     item {
                                         Text(
-                                            text = "Paradas (${state.filteredStops.size})",
+                                            text = stringResource(R.string.line_picker_search_stops, state.filteredStops.size),
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.secondary,
@@ -991,7 +1007,7 @@ fun MapScreen(
                                             modifier = Modifier.size(16.dp)
                                         )
                                     },
-                                    label = { Text("Activas (${state.selectedLines.size})") }
+                                    label = { Text(stringResource(R.string.line_picker_tab_active, state.selectedLines.size)) }
                                 )
                             }
                             item {
@@ -1009,14 +1025,14 @@ fun MapScreen(
                                             modifier = Modifier.size(16.dp)
                                         )
                                     },
-                                    label = { Text("Ajustes (${state.presets.size})") }
+                                    label = { Text(stringResource(R.string.line_picker_tab_presets, state.presets.size)) }
                                 )
                             }
                             item {
                                 FilterChip(
                                     selected = state.selectedCategory == null,
                                     onClick = { viewModel.selectCategory(null) },
-                                    label = { Text("Todos") }
+                                    label = { Text(stringResource(R.string.line_picker_tab_all)) }
                                 )
                             }
                             items(allCategories) { category ->
@@ -1056,7 +1072,7 @@ fun MapScreen(
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Guardar ajuste")
+                                        Text(stringResource(R.string.line_picker_save_preset))
                                     }
                                     OutlinedButton(
                                         onClick = { viewModel.clearAllLines() },
@@ -1069,7 +1085,7 @@ fun MapScreen(
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Limpiar", color = MaterialTheme.colorScheme.error)
+                                        Text(stringResource(R.string.action_clear), color = MaterialTheme.colorScheme.error)
                                     }
                                 }
 
@@ -1081,7 +1097,7 @@ fun MapScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "No hay líneas activas actualmente.\nSeleccioná colectivos en 'Todos' o cargá un ajuste.",
+                                            text = stringResource(R.string.line_picker_empty_active_desc),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1138,7 +1154,7 @@ fun MapScreen(
                                                     ) {
                                                         Icon(
                                                             imageVector = Icons.Default.Close,
-                                                            contentDescription = "Quitar línea",
+                                                            contentDescription = stringResource(R.string.map_remove_line),
                                                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
                                                     }
@@ -1158,7 +1174,7 @@ fun MapScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "No tenés ajustes guardados.\nConfigurá tus líneas y guardá un ajuste desde la pestaña 'Activas'.",
+                                        text = stringResource(R.string.line_picker_empty_presets_desc),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1191,7 +1207,11 @@ fun MapScreen(
                                                             fontWeight = FontWeight.Bold
                                                         )
                                                         Text(
-                                                            text = "${preset.lines.size} ${if (preset.lines.size == 1) "colectivo" else "colectivos"}",
+                                                            text = if (preset.lines.size == 1) {
+                                                                stringResource(R.string.line_picker_buses_count_singular, preset.lines.size)
+                                                            } else {
+                                                                stringResource(R.string.line_picker_buses_count_plural, preset.lines.size)
+                                                            },
                                                             style = MaterialTheme.typography.bodySmall,
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
@@ -1210,7 +1230,7 @@ fun MapScreen(
                                                             modifier = Modifier.size(16.dp)
                                                         )
                                                         Spacer(modifier = Modifier.width(4.dp))
-                                                        Text("Cargar")
+                                                        Text(stringResource(R.string.line_picker_load_preset))
                                                     }
 
                                                     Spacer(modifier = Modifier.width(6.dp))
@@ -1221,7 +1241,7 @@ fun MapScreen(
                                                     ) {
                                                         Icon(
                                                             imageVector = Icons.Default.DeleteOutline,
-                                                            contentDescription = "Eliminar ajuste",
+                                                            contentDescription = stringResource(R.string.line_picker_delete_preset_action),
                                                             tint = MaterialTheme.colorScheme.error
                                                         )
                                                     }
@@ -1351,9 +1371,9 @@ fun MapScreen(
         val preset = presetToDelete!!
         AlertDialog(
             onDismissRequest = { presetToDelete = null },
-            title = { Text("Eliminar Ajuste") },
+            title = { Text(stringResource(R.string.line_picker_delete_preset_title)) },
             text = {
-                Text("¿Estás seguro de que querés eliminar el ajuste \"${preset.name}\"?")
+                Text(stringResource(R.string.line_picker_delete_preset_confirm, preset.name))
             },
             confirmButton = {
                 Button(
@@ -1366,12 +1386,12 @@ fun MapScreen(
                         contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
-                    Text("Eliminar")
+                    Text(stringResource(R.string.action_delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { presetToDelete = null }) {
-                    Text("Cancelar")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -1414,7 +1434,7 @@ fun SubgroupSectionHeader(
                 shape = RoundedCornerShape(6.dp)
             ) {
                 Text(
-                    text = "$count líneas",
+                    text = stringResource(R.string.line_picker_lines_count, count),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
@@ -1424,7 +1444,7 @@ fun SubgroupSectionHeader(
             Spacer(modifier = Modifier.width(6.dp))
             Icon(
                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (isExpanded) "Colapsar" else "Expandir",
+                contentDescription = if (isExpanded) stringResource(R.string.line_picker_action_collapse) else stringResource(R.string.line_picker_action_expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -1577,13 +1597,15 @@ fun SavePresetDialog(
     var presetName by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
+    val defaultErrorMsg = stringResource(R.string.line_picker_save_preset_error_default)
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Guardar Ajuste") },
+        title = { Text(stringResource(R.string.line_picker_save_preset_title)) },
         text = {
             Column {
                 Text(
-                    text = "Guardá la configuración actual ($currentLinesCount colectivos) para cargarla rápidamente más tarde.",
+                    text = stringResource(R.string.line_picker_save_preset_instruction, currentLinesCount),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1594,8 +1616,8 @@ fun SavePresetDialog(
                         presetName = it
                         errorMessage = null
                     },
-                    label = { Text("Nombre del ajuste") },
-                    placeholder = { Text("Ej: Casa al Trabajo, Facultad...") },
+                    label = { Text(stringResource(R.string.line_picker_save_preset_label)) },
+                    placeholder = { Text(stringResource(R.string.line_picker_save_preset_placeholder)) },
                     singleLine = true,
                     isError = errorMessage != null,
                     modifier = Modifier.fillMaxWidth()
@@ -1616,17 +1638,17 @@ fun SavePresetDialog(
                     val result = onSave(presetName)
                     result.fold(
                         onSuccess = { onDismiss() },
-                        onFailure = { errorMessage = it.message ?: "Error al guardar el ajuste" }
+                        onFailure = { errorMessage = it.message ?: defaultErrorMsg }
                     )
                 },
                 enabled = presetName.isNotBlank()
             ) {
-                Text("Guardar")
+                Text(stringResource(R.string.action_save))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text(stringResource(R.string.action_cancel))
             }
         }
     )
