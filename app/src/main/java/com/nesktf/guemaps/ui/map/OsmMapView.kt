@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.runtime.Composable
@@ -20,9 +21,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.nesktf.guemaps.data.model.ActiveLineData
 import com.nesktf.guemaps.data.model.BusLiveDetails
 import com.nesktf.guemaps.data.model.BusNode
 import com.nesktf.guemaps.data.model.BusPos
+import com.nesktf.guemaps.data.model.MapBusStop
+import com.nesktf.guemaps.data.model.clusterBusStops
 import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
 import org.osmdroid.events.MapListener
@@ -34,7 +38,6 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import android.location.Location
 import android.view.MotionEvent
-import android.widget.Toast
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.FolderOverlay
 import org.osmdroid.views.overlay.Marker
@@ -56,12 +59,16 @@ fun OsmMapView(
     activeLines: List<ActiveLineData> = emptyList(),
     showStops: Boolean,
     userLocation: Location? = null,
+    selectedReferenceStop: MapBusStop? = null,
+    selectedBusInterno: String? = null,
     busLiveDetails: Map<String, BusLiveDetails> = emptyMap(),
     cameraState: MapCameraState = MapCameraState(),
     shouldFitRouteBounds: Boolean = false,
     onRouteBoundsFitted: () -> Unit = {},
     onCameraMoved: (Double, Double, Double) -> Unit = { _, _, _ -> },
     onBusSelected: (String) -> Unit = {},
+    onStopSelected: (MapBusStop) -> Unit = {},
+    onShowStopToast: (String) -> Unit = {},
     mapActions: MapActions = remember { MapActions() },
     modifier: Modifier = Modifier
 ) {
@@ -93,6 +100,8 @@ fun OsmMapView(
 
     val routesFolder = remember { FolderOverlay() }
     val fastStopsOverlay = remember { FastStopsOverlay(context) }
+    fastStopsOverlay.onStopSelected = onStopSelected
+    fastStopsOverlay.onShowStopToast = onShowStopToast
     val userLocationFolder = remember { FolderOverlay() }
     val busesFolder = remember { FolderOverlay() }
 
@@ -232,6 +241,7 @@ fun OsmMapView(
                         outlinePaint.strokeJoin = Paint.Join.ROUND
                         outlinePaint.isAntiAlias = true
                         isGeodesic = false
+                        infoWindow = null
                         setPoints(geoPoints)
                     }
                     routesFolder.add(polyline)
@@ -246,6 +256,7 @@ fun OsmMapView(
                 outlinePaint.strokeJoin = Paint.Join.ROUND
                 outlinePaint.isAntiAlias = true
                 isGeodesic = false
+                infoWindow = null
                 setPoints(geoPoints)
             }
             routesFolder.add(polyline)
@@ -254,8 +265,9 @@ fun OsmMapView(
     }
 
     // 2. High-performance stops layer: single custom overlay with viewport culling
-    LaunchedEffect(activeLines, routeNodes, showStops) {
-        fastStopsOverlay.updateData(activeLines, showStops, fallback = routeNodes)
+    LaunchedEffect(activeLines, routeNodes, showStops, selectedReferenceStop) {
+        val clusteredStops = clusterBusStops(activeLines, routeNodes)
+        fastStopsOverlay.updateData(clusteredStops, showStops, selectedReferenceStop)
         mapView.invalidate()
     }
 
@@ -274,6 +286,7 @@ fun OsmMapView(
                     outlinePaint.color = Color.parseColor("#602563EB")
                     outlinePaint.strokeWidth = 2f
                     outlinePaint.style = Paint.Style.STROKE
+                    infoWindow = null
                 }
                 userLocationFolder.add(accuracyCircle)
             }
@@ -282,37 +295,38 @@ fun OsmMapView(
             val userMarker = Marker(mapView).apply {
                 position = GeoPoint(userLocation.latitude, userLocation.longitude)
                 icon = userDrawable
+                infoWindow = null
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                title = "Tu ubicación"
-                snippet = if (userLocation.hasAccuracy()) "Precisión: ±%.0fm".format(userLocation.accuracy) else null
+                setOnMarkerClickListener { _, _ -> true }
             }
             userLocationFolder.add(userMarker)
         }
         mapView.invalidate()
     }
 
-    // 4. Live buses layer: updated when activeBuses change (does NOT re-create routes or stops!)
-    LaunchedEffect(activeLines, activeBuses) {
+    // 4. Live buses layer: updated when activeBuses or selectedBusInterno change (does NOT re-create routes or stops!)
+    LaunchedEffect(activeLines, activeBuses, selectedBusInterno) {
         busesFolder.items.clear()
         if (activeLines.isNotEmpty()) {
             activeLines.forEach { lineData ->
                 lineData.activeBuses.forEach { bus ->
+                    val isSelected = (bus.interno == selectedBusInterno)
                     val busDrawable = createPrettyBusMarkerDrawable(
                         context = context,
                         busNumber = bus.interno,
                         hasRamp = bus.vehiculoRampa,
-                        colorHex = lineData.colorHex
+                        colorHex = lineData.colorHex,
+                        orientacion = bus.orientacion,
+                        isSelected = isSelected
                     )
 
                     val marker = Marker(mapView).apply {
                         position = GeoPoint(bus.latitud, bus.longitud)
                         icon = busDrawable
-                        setAnchor(Marker.ANCHOR_CENTER, 0.85f)
-                        title = "Línea ${lineData.line.nombreCorto} - Coche #${bus.interno}"
-                        snippet = if (bus.vehiculoRampa) "♿ Accesible con rampa" else lineData.line.nombreLinea
-                        setOnMarkerClickListener { m, _ ->
+                        infoWindow = null
+                        setAnchor(Marker.ANCHOR_CENTER, 0.5f)
+                        setOnMarkerClickListener { _, _ ->
                             onBusSelected(bus.interno)
-                            m.showInfoWindow()
                             true
                         }
                     }
@@ -321,22 +335,23 @@ fun OsmMapView(
             }
         } else {
             activeBuses.forEach { bus ->
+                val isSelected = (bus.interno == selectedBusInterno)
                 val busDrawable = createPrettyBusMarkerDrawable(
                     context = context,
                     busNumber = bus.interno,
                     hasRamp = bus.vehiculoRampa,
-                    colorHex = "#35399D"
+                    colorHex = "#35399D",
+                    orientacion = bus.orientacion,
+                    isSelected = isSelected
                 )
 
                 val marker = Marker(mapView).apply {
                     position = GeoPoint(bus.latitud, bus.longitud)
                     icon = busDrawable
-                    setAnchor(Marker.ANCHOR_CENTER, 0.85f)
-                    title = "Colectivo #${bus.interno}"
-                    snippet = if (bus.vehiculoRampa) "♿ Accesible con rampa" else null
-                    setOnMarkerClickListener { m, _ ->
+                    infoWindow = null
+                    setAnchor(Marker.ANCHOR_CENTER, 0.5f)
+                    setOnMarkerClickListener { _, _ ->
                         onBusSelected(bus.interno)
-                        m.showInfoWindow()
                         true
                     }
                 }
@@ -374,11 +389,13 @@ fun OsmMapView(
 // Marker Cache and Generators
 
 class FastStopsOverlay(
-    private val context: Context
+    private val context: Context,
+    var onStopSelected: ((MapBusStop) -> Unit)? = null,
+    var onShowStopToast: ((String) -> Unit)? = null
 ) : Overlay() {
-    private var activeLines: List<ActiveLineData> = emptyList()
-    private var fallbackNodes: List<BusNode> = emptyList()
+    private var stops: List<MapBusStop> = emptyList()
     private var showStops: Boolean = true
+    private var selectedReferenceStop: MapBusStop? = null
 
     private val screenPoint = android.graphics.Point()
     private val clickPoint = android.graphics.Point()
@@ -392,11 +409,16 @@ class FastStopsOverlay(
         style = Paint.Style.STROKE
         strokeWidth = borderStroke
     }
+    private val selectedBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#EF4444")
+        style = Paint.Style.STROKE
+        strokeWidth = 3.5f * density
+    }
 
-    fun updateData(lines: List<ActiveLineData>, show: Boolean, fallback: List<BusNode> = emptyList()) {
-        this.activeLines = lines
+    fun updateData(stops: List<MapBusStop>, show: Boolean, selectedStop: MapBusStop? = null) {
+        this.stops = stops
         this.showStops = show
-        this.fallbackNodes = fallback
+        this.selectedReferenceStop = selectedStop
     }
 
     private fun getFillPaint(colorHex: String): Paint {
@@ -426,34 +448,25 @@ class FastStopsOverlay(
         val minLon = mapBounds.lonWest - lonMargin
         val maxLon = mapBounds.lonEast + lonMargin
 
-        if (activeLines.isNotEmpty()) {
-            for (lineData in activeLines) {
-                val fillPaint = getFillPaint(lineData.colorHex)
-                val nodes = lineData.routeNodes
-                for (i in nodes.indices) {
-                    val node = nodes[i]
-                    if (!node.parada) continue
+        for (i in stops.indices) {
+            val stop = stops[i]
+            val lat = stop.latitude
+            val lon = stop.longitude
+            if (lat < minLat || lat > maxLat || lon < minLon || lon > maxLon) continue
 
-                    val lat = node.latitud
-                    val lon = node.longitud
-                    if (lat < minLat || lat > maxLat || lon < minLon || lon > maxLon) continue
+            projection.toPixels(GeoPoint(lat, lon), screenPoint)
+            val fillPaint = getFillPaint(stop.colorHex)
 
-                    projection.toPixels(GeoPoint(lat, lon), screenPoint)
-                    canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, fillPaint)
-                    canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, borderPaint)
-                }
-            }
-        } else if (fallbackNodes.isNotEmpty()) {
-            val fillPaint = getFillPaint("#35399D")
-            for (i in fallbackNodes.indices) {
-                val node = fallbackNodes[i]
-                if (!node.parada) continue
+            val isSelected = selectedReferenceStop != null && (
+                selectedReferenceStop?.id == stop.id ||
+                (Math.abs(selectedReferenceStop!!.latitude - stop.latitude) < 0.0001 &&
+                 Math.abs(selectedReferenceStop!!.longitude - stop.longitude) < 0.0001)
+            )
 
-                val lat = node.latitud
-                val lon = node.longitud
-                if (lat < minLat || lat > maxLat || lon < minLon || lon > maxLon) continue
-
-                projection.toPixels(GeoPoint(lat, lon), screenPoint)
+            if (isSelected) {
+                canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius + 1f * density, fillPaint)
+                canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius + 1f * density, selectedBorderPaint)
+            } else {
                 canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, fillPaint)
                 canvas.drawCircle(screenPoint.x.toFloat(), screenPoint.y.toFloat(), stopRadius, borderPaint)
             }
@@ -461,41 +474,39 @@ class FastStopsOverlay(
     }
 
     override fun onSingleTapConfirmed(e: MotionEvent, mapView: MapView): Boolean {
-        if (!showStops || mapView.zoomLevelDouble < 13.0) return false
+        if (!showStops || mapView.zoomLevelDouble < 13.0 || stops.isEmpty()) return false
         val projection = mapView.projection ?: return false
         val touchX = e.x
         val touchY = e.y
-        val touchRadiusSq = (26f * density) * (26f * density) // 26dp touch radius
+        val touchRadiusSq = (28f * density) * (28f * density) // 28dp touch radius
 
-        if (activeLines.isNotEmpty()) {
-            for (lineData in activeLines) {
-                for (node in lineData.routeNodes) {
-                    if (!node.parada) continue
-                    projection.toPixels(GeoPoint(node.latitud, node.longitud), clickPoint)
-                    val dx = clickPoint.x - touchX
-                    val dy = clickPoint.y - touchY
-                    if (dx * dx + dy * dy <= touchRadiusSq) {
-                        val stopName = node.descripcionParada?.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
-                        val code = node.codigoParada?.takeIf { it.isNotBlank() }?.let { " (Código: $it)" } ?: ""
-                        Toast.makeText(context, "$stopName$code\nLínea ${lineData.line.nombreCorto}", Toast.LENGTH_SHORT).show()
-                        return true
-                    }
-                }
-            }
-        } else if (fallbackNodes.isNotEmpty()) {
-            for (node in fallbackNodes) {
-                if (!node.parada) continue
-                projection.toPixels(GeoPoint(node.latitud, node.longitud), clickPoint)
-                val dx = clickPoint.x - touchX
-                val dy = clickPoint.y - touchY
-                if (dx * dx + dy * dy <= touchRadiusSq) {
-                    val stopName = node.descripcionParada?.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
-                    val code = node.codigoParada?.takeIf { it.isNotBlank() }?.let { " (Código: $it)" } ?: ""
-                    Toast.makeText(context, "$stopName$code", Toast.LENGTH_SHORT).show()
-                    return true
-                }
+        var closestStop: MapBusStop? = null
+        var closestDistSq = Float.MAX_VALUE
+
+        for (stop in stops) {
+            projection.toPixels(GeoPoint(stop.latitude, stop.longitude), clickPoint)
+            val dx = clickPoint.x - touchX
+            val dy = clickPoint.y - touchY
+            val distSq = dx * dx + dy * dy
+            if (distSq <= touchRadiusSq && distSq < closestDistSq) {
+                closestDistSq = distSq
+                closestStop = stop
             }
         }
+
+        if (closestStop != null) {
+            val stopName = closestStop.name.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
+            val linesText = if (closestStop.lineNames.isNotEmpty()) {
+                if (closestStop.lineNames.size == 1) "Línea ${closestStop.lineNames.first()}"
+                else "Líneas: ${closestStop.lineNames.joinToString(", ")}"
+            } else ""
+            val msg = if (linesText.isNotBlank()) "$stopName\n$linesText" else stopName
+
+            onStopSelected?.invoke(closestStop)
+            onShowStopToast?.invoke(msg)
+            return true
+        }
+
         return false
     }
 }
@@ -540,9 +551,12 @@ private fun createPrettyBusMarkerDrawable(
     context: Context,
     busNumber: String,
     hasRamp: Boolean,
-    colorHex: String = "#35399D"
+    colorHex: String = "#35399D",
+    orientacion: Float? = null,
+    isSelected: Boolean = false
 ): BitmapDrawable {
-    val cacheKey = "${busNumber}_${hasRamp}_${colorHex}"
+    val angleKey = orientacion?.let { ((Math.round(it / 10f) * 10) % 360).toInt() } ?: -1
+    val cacheKey = "${busNumber}_${hasRamp}_${colorHex}_${angleKey}_${isSelected}"
     busDrawableCache[cacheKey]?.let { return it }
 
     val density = context.resources.displayMetrics.density
@@ -558,17 +572,22 @@ private fun createPrettyBusMarkerDrawable(
     val numWidth = numPaint.measureText(busNumber)
     val busWidth = maxOf((46 * density).toInt(), (numWidth + 18 * density).toInt())
     val busHeight = (36 * density).toInt()
-    val totalHeight = busHeight + (10 * density).toInt() // bottom pointer / clearance
-    val rampExtra = if (hasRamp) (12 * density).toInt() else 0
-    val totalWidth = busWidth + rampExtra
+    val rampExtra = if (hasRamp) (14 * density).toInt() else 0
+    val pad = (12 * density).toInt() // Margin for directional arrow and glow outline
+    val totalWidth = busWidth + rampExtra + 2 * pad
+    val totalHeight = busHeight + (10 * density).toInt() + 2 * pad
 
     val bitmap = Bitmap.createBitmap(totalWidth, totalHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
-    val busLeft = 2 * density
-    val busTop = 6 * density
+    val busLeft = pad.toFloat() + 2 * density
+    val busTop = pad.toFloat() + 6 * density
     val busRight = busLeft + busWidth - (4 * density)
     val busBottom = busTop + busHeight - (4 * density)
+    val bodyCenterX = (busLeft + busRight) / 2f
+    val bodyCenterY = (busTop + busBottom) / 2f
+    val bodyRect = RectF(busLeft, busTop, busRight, busBottom)
+    val cornerR = 7 * density
 
     // 1. Bus Ground Shadow
     val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -586,20 +605,28 @@ private fun createPrettyBusMarkerDrawable(
     canvas.drawRoundRect(RectF(busLeft + (4 * density), busBottom - (4 * density), busLeft + (10 * density), busBottom + (2 * density)), 2 * density, 2 * density, wheelPaint)
     canvas.drawRoundRect(RectF(busRight - (10 * density), busBottom - (4 * density), busRight - (4 * density), busBottom + (2 * density)), 2 * density, 2 * density, wheelPaint)
 
-    // 3. Bus Body (Dynamic Hex Color!)
+    // 3. Bus Body (Dynamic Hex Color & Selection Highlight)
     val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = try { Color.parseColor(colorHex) } catch (_: Exception) { Color.parseColor("#35399D") }
         style = Paint.Style.FILL
     }
-    val bodyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = 2 * density
-    }
-    val bodyRect = RectF(busLeft, busTop, busRight, busBottom)
-    val cornerR = 7 * density
     canvas.drawRoundRect(bodyRect, cornerR, cornerR, bodyPaint)
-    canvas.drawRoundRect(bodyRect, cornerR, cornerR, bodyBorderPaint)
+
+    if (isSelected) {
+        val redBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#EF4444")
+            style = Paint.Style.STROKE
+            strokeWidth = 3.5f * density
+        }
+        canvas.drawRoundRect(bodyRect, cornerR, cornerR, redBorderPaint)
+    } else {
+        val bodyBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 2 * density
+        }
+        canvas.drawRoundRect(bodyRect, cornerR, cornerR, bodyBorderPaint)
+    }
 
     // 4. Destination Sign Banner (Header with bus number)
     val signPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -638,8 +665,8 @@ private fun createPrettyBusMarkerDrawable(
     // 7. Wheelchair Ramp Badge (♿)
     if (hasRamp) {
         val rampSize = 17 * density
-        val rampLeft = totalWidth - rampSize - (1 * density)
-        val rampTop = 1f * density
+        val rampLeft = busRight + (1 * density)
+        val rampTop = busTop - (1 * density)
         val rampRect = RectF(rampLeft, rampTop, rampLeft + rampSize, rampTop + rampSize)
 
         val rampBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -661,6 +688,53 @@ private fun createPrettyBusMarkerDrawable(
         }
         val rampY = rampRect.centerY() - ((rampTextPaint.descent() + rampTextPaint.ascent()) / 2f)
         canvas.drawText("♿", rampRect.centerX(), rampY, rampTextPaint)
+    }
+
+    // 8. Non-intrusive Direction Arrow
+    if (orientacion != null && orientacion >= 0f) {
+        val angleRad = Math.toRadians(orientacion.toDouble())
+        val dirX = Math.sin(angleRad).toFloat()
+        val dirY = -Math.cos(angleRad).toFloat()
+
+        val arrowDist = (maxOf(bodyRect.width(), bodyRect.height()) / 2f) + (6.5f * density)
+        val arrowX = bodyCenterX + dirX * arrowDist
+        val arrowY = bodyCenterY + dirY * arrowDist
+
+        canvas.save()
+        canvas.translate(arrowX, arrowY)
+        canvas.rotate(orientacion)
+
+        val arrowPath = Path().apply {
+            moveTo(0f, -5.5f * density)
+            lineTo(4.2f * density, 3.8f * density)
+            lineTo(0f, 1.6f * density)
+            lineTo(-4.2f * density, 3.8f * density)
+            close()
+        }
+
+        val arrowDarkOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0F172A")
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f * density
+            strokeJoin = Paint.Join.ROUND
+            strokeCap = Paint.Cap.ROUND
+        }
+        canvas.drawPath(arrowPath, arrowDarkOutline)
+
+        val arrowFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = try { Color.parseColor(colorHex) } catch (_: Exception) { Color.parseColor("#38BDF8") }
+            style = Paint.Style.FILL
+        }
+        canvas.drawPath(arrowPath, arrowFillPaint)
+
+        val arrowInnerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeWidth = 1f * density
+        }
+        canvas.drawPath(arrowPath, arrowInnerStroke)
+
+        canvas.restore()
     }
 
     val drawable = BitmapDrawable(context.resources, bitmap)

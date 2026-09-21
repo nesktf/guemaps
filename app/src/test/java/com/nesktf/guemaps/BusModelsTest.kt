@@ -484,6 +484,177 @@ class BusModelsTest {
         assertEquals(2L, sorted[1].id)
         assertEquals(3L, sorted[2].id)
     }
+
+    @Test
+    fun testClusterBusStopsSingleAndGrouped() {
+        val line1 = com.nesktf.guemaps.data.model.FlatBusLine("Urbano", "100", "1A - San Carlos")
+        val line2 = com.nesktf.guemaps.data.model.FlatBusLine("Urbano", "200", "2B - San Jose")
+
+        // Stop 1: only on Line 1
+        val stopLine1Only = com.nesktf.guemaps.data.model.BusNode(
+            latitud = -24.7800,
+            longitud = -65.4100,
+            parada = true,
+            codigoParada = "P01",
+            descripcionParada = "Parada Solo 1A"
+        )
+        // Stop 2: on Line 1 and Line 2 at virtually the same location (within 10m)
+        val stopSharedLine1 = com.nesktf.guemaps.data.model.BusNode(
+            latitud = -24.7850,
+            longitud = -65.4150,
+            parada = true,
+            codigoParada = "P02",
+            descripcionParada = "Parada Compartida"
+        )
+        val stopSharedLine2 = com.nesktf.guemaps.data.model.BusNode(
+            latitud = -24.78505, // ~5 meters away
+            longitud = -65.41505,
+            parada = true,
+            codigoParada = "P02",
+            descripcionParada = "Parada Compartida"
+        )
+
+        val activeLines = listOf(
+            com.nesktf.guemaps.data.model.ActiveLineData(
+                line = line1,
+                colorHex = "#35399D",
+                routeNodes = listOf(stopLine1Only, stopSharedLine1)
+            ),
+            com.nesktf.guemaps.data.model.ActiveLineData(
+                line = line2,
+                colorHex = "#F17614",
+                routeNodes = listOf(stopSharedLine2)
+            )
+        )
+
+        val clustered = com.nesktf.guemaps.data.model.clusterBusStops(activeLines)
+        assertEquals(2, clustered.size)
+
+        val singleStop = clustered.find { it.code == "P01" }
+        assertNotNull(singleStop)
+        assertFalse(singleStop!!.isGrouped)
+        assertEquals(1, singleStop.lineCodes.size)
+        assertEquals("#35399D", singleStop.colorHex)
+
+        val groupedStop = clustered.find { it.code == "P02" }
+        assertNotNull(groupedStop)
+        assertTrue(groupedStop!!.isGrouped)
+        assertEquals(2, groupedStop.lineCodes.size)
+        assertTrue(groupedStop.lineNames.contains("1A"))
+        assertTrue(groupedStop.lineNames.contains("2B"))
+        assertEquals("#64748B", groupedStop.colorHex)
+    }
+
+    @Test
+    fun testSpeedBufferSlidingWindow() {
+        val buffer = ArrayDeque<Double>(8)
+        val samples = listOf(20.0, 22.0, 24.0, 26.0, 28.0, 30.0, 32.0, 34.0, 40.0)
+
+        for (s in samples) {
+            buffer.addLast(s)
+            if (buffer.size > 8) {
+                buffer.removeFirst()
+            }
+        }
+
+        // Buffer size should be capped at 8
+        assertEquals(8, buffer.size)
+        // 20.0 should have been removed; buffer now has 22.0 through 40.0
+        assertEquals(22.0, buffer.first(), 0.001)
+        assertEquals(40.0, buffer.last(), 0.001)
+
+        val expectedAvg = (22.0 + 24.0 + 26.0 + 28.0 + 30.0 + 32.0 + 34.0 + 40.0) / 8.0
+        assertEquals(expectedAvg, buffer.average(), 0.001)
+    }
+
+    @Test
+    fun testBusLiveDetailsTimeFormatting() {
+        val bus = com.nesktf.guemaps.data.model.BusPos(interno = "100")
+
+        // Arriving (<= 15 seconds)
+        val arriving = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            estimatedSecondsRemaining = 10L
+        )
+        assertEquals("unos segundos", arriving.formatEstimatedTimeRemaining())
+
+        // 30 segundos (< 45 seconds)
+        val thirtySecs = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            estimatedSecondsRemaining = 30L
+        )
+        assertEquals("30 segundos", thirtySecs.formatEstimatedTimeRemaining())
+
+        // 1 minuto (< 90 seconds)
+        val oneMin = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            estimatedSecondsRemaining = 60L
+        )
+        assertEquals("1 minuto", oneMin.formatEstimatedTimeRemaining())
+
+        // 30 minutos
+        val thirtyMins = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            estimatedSecondsRemaining = 1800L
+        )
+        assertEquals("30 minutos", thirtyMins.formatEstimatedTimeRemaining())
+
+        // Hours format (> 3600 seconds)
+        val hourAndHalf = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            estimatedSecondsRemaining = 5400L
+        )
+        assertEquals("1 hora y 30 minutos", hourAndHalf.formatEstimatedTimeRemaining())
+    }
+
+    @Test
+    fun testBusLiveDetailsArrivalSummary() {
+        val bus = com.nesktf.guemaps.data.model.BusPos(interno = "100")
+
+        // 1. With estimated arrival epoch
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 16)
+        cal.set(java.util.Calendar.MINUTE, 34)
+        val epoch = cal.timeInMillis
+
+        val detailsWithTime = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            speedKmh = 25.0,
+            averageSpeedKmh = 25.0,
+            distanceToUserStopMeters = 1500.0,
+            estimatedSecondsRemaining = 1800L, // 30 mins
+            estimatedArrivalEpochMs = epoch
+        )
+        val summary = detailsWithTime.formatEstimatedArrivalSummary()
+        assertEquals("Llega en 30 minutos (16:34 hs)", summary)
+
+        // 2. Stopped bus (< 1.0 km/h)
+        val stopped = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            speedKmh = 0.0,
+            averageSpeedKmh = 0.0,
+            distanceToUserStopMeters = 800.0
+        )
+        assertEquals("Colectivo detenido", stopped.formatEstimatedArrivalSummary())
+
+        // 3. Arriving in seconds
+        val atStop = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            speedKmh = 5.0,
+            averageSpeedKmh = 5.0,
+            distanceToUserStopMeters = 15.0,
+            estimatedSecondsRemaining = 0L,
+            estimatedArrivalEpochMs = epoch
+        )
+        assertEquals("Llega en unos segundos (16:34 hs)", atStop.formatEstimatedArrivalSummary())
+
+        // 4. Calculating when no distance or speed available
+        val calculating = com.nesktf.guemaps.data.model.BusLiveDetails(
+            bus = bus,
+            distanceToUserStopMeters = null
+        )
+        assertEquals("Calculando tiempo...", calculating.formatEstimatedArrivalSummary())
+    }
 }
 
 

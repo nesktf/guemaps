@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -150,6 +151,10 @@ fun MapScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.requestUserLocation()
+    }
+
     var showSavePresetDialog by remember { mutableStateOf(false) }
     var presetToDelete by remember { mutableStateOf<BusPreset?>(null) }
 
@@ -161,12 +166,16 @@ fun MapScreen(
             activeLines = state.activeLines.values.toList(),
             showStops = state.showStops,
             userLocation = state.userLocation,
+            selectedReferenceStop = state.selectedReferenceStop,
+            selectedBusInterno = state.selectedBusInterno,
             busLiveDetails = state.busLiveDetails,
             cameraState = state.cameraState,
             shouldFitRouteBounds = state.shouldFitRouteBounds,
             onRouteBoundsFitted = { viewModel.onRouteBoundsFitted() },
             onCameraMoved = { lat, lon, zoom -> viewModel.updateMapCamera(lat, lon, zoom) },
             onBusSelected = { viewModel.selectBusForFloatingCard(it) },
+            onStopSelected = { viewModel.selectReferenceStop(it) },
+            onShowStopToast = { viewModel.showStopToast(it) },
             mapActions = mapActions,
             modifier = Modifier.fillMaxSize()
         )
@@ -344,7 +353,7 @@ fun MapScreen(
 
             // Floating Bus Info Card (Speed and User-Relative Stop Distance)
             if (state.selectedLines.isNotEmpty() && state.activeBuses.isNotEmpty()) {
-                val focusedInterno = state.selectedBusInterno ?: state.activeBuses.firstOrNull()?.interno
+                val focusedInterno = state.selectedBusInterno
                 val liveDetail = focusedInterno?.let { state.busLiveDetails[it] }
 
                 if (liveDetail != null) {
@@ -356,7 +365,7 @@ fun MapScreen(
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
                         modifier = Modifier
                             .align(Alignment.Start)
-                            .widthIn(max = 240.dp)
+                            .widthIn(min = 210.dp, max = 285.dp)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Row(
@@ -384,20 +393,16 @@ fun MapScreen(
                                     }
                                 }
 
-                                if (state.activeBuses.size > 1) {
-                                    val curIdx = state.activeBuses.indexOfFirst { it.interno == focusedInterno }
-                                    val nextBus = state.activeBuses[(curIdx + 1).coerceAtLeast(0) % state.activeBuses.size]
-                                    IconButton(
-                                        onClick = { viewModel.selectBusForFloatingCard(nextBus.interno) },
-                                        modifier = Modifier.size(22.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.NavigateNext,
-                                            contentDescription = "Siguiente colectivo",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
+                                IconButton(
+                                    onClick = { viewModel.clearSelectedBus() },
+                                    modifier = Modifier.size(22.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Cerrar",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
                             }
 
@@ -433,7 +438,7 @@ fun MapScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Column {
-                                    if (state.userLocation != null) {
+                                    if (state.selectedReferenceStop != null || state.userLocation != null) {
                                         if (liveDetail.distanceToUserStopMeters != null) {
                                             Text(
                                                 text = liveDetail.formatUserStopDistance(),
@@ -466,19 +471,60 @@ fun MapScreen(
                                     }
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            // Remaining waiting time
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (state.selectedReferenceStop != null || state.userLocation != null) {
+                                        liveDetail.formatEstimatedArrivalSummary()
+                                    } else {
+                                        "GPS inactivo (tiempo de espera)"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Left stack: Toggle Stops and Info buttons (Positioned cleanly at Bottom-Left, away from bus selector)
+        // Left stack: Select Nearest Stop, Toggle Stops and Info buttons (Positioned cleanly at Bottom-Left, away from bus selector)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Automatically Select Closest Bus Stop
+            val hasUserLocation = state.userLocation != null
+            FloatingActionButton(
+                onClick = {
+                    if (hasUserLocation) {
+                        viewModel.selectNearestStopToUser()
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = if (hasUserLocation) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.NearMe,
+                    contentDescription = "Seleccionar parada más cercana"
+                )
+            }
+
             // Toggle Stops
             FloatingActionButton(
                 onClick = { viewModel.toggleStops() },
@@ -617,7 +663,7 @@ fun MapScreen(
             }
         }
 
-        // Bottom Center Toasts (Active buses count & GPS loading indicator)
+        // Bottom Center Toasts (Active buses count, GPS loading indicator & Stop selection toast)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -625,6 +671,38 @@ fun MapScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Stop selected in-app toast
+            AnimatedVisibility(
+                visible = state.stopToastMessage != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.95f),
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 6.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Place,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.inverseOnSurface,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = state.stopToastMessage ?: "",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.inverseOnSurface,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+
             // Active buses toast
             if (state.selectedLines.isNotEmpty() && !state.isLoadingRoute) {
                 Surface(

@@ -3,6 +3,9 @@ package com.nesktf.guemaps.data.model
 import com.google.gson.JsonArray
 import com.google.gson.annotations.SerializedName
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class BusGroupsResponse(
     @SerializedName("error") val error: Int = 0,
@@ -129,6 +132,140 @@ data class BusStopRecord(
     val longitude: Double
 )
 
+data class ActiveLineData(
+    val line: FlatBusLine,
+    val colorHex: String,
+    val isLoadingRoute: Boolean = true,
+    val routeNodes: List<BusNode> = emptyList(),
+    val isRouteOffline: Boolean = false,
+    val activeBuses: List<BusPos> = emptyList()
+)
+
+data class MapBusStop(
+    val id: String,
+    val latitude: Double,
+    val longitude: Double,
+    val name: String,
+    val code: String? = null,
+    val lineCodes: List<String> = emptyList(),
+    val lineNames: List<String> = emptyList(),
+    val colorHex: String = "#35399D"
+) {
+    val isGrouped: Boolean get() = lineCodes.size > 1
+}
+
+fun clusterBusStops(
+    activeLines: List<ActiveLineData>,
+    fallbackNodes: List<BusNode> = emptyList()
+): List<MapBusStop> {
+    if (activeLines.isEmpty() && fallbackNodes.isEmpty()) return emptyList()
+
+    data class Candidate(
+        val node: BusNode,
+        val lineCode: String,
+        val lineName: String,
+        val colorHex: String
+    )
+    val candidates = mutableListOf<Candidate>()
+
+    if (activeLines.isNotEmpty()) {
+        for (lineData in activeLines) {
+            for (node in lineData.routeNodes) {
+                if (node.parada) {
+                    candidates.add(
+                        Candidate(
+                            node = node,
+                            lineCode = lineData.line.codLinea,
+                            lineName = lineData.line.nombreCorto,
+                            colorHex = lineData.colorHex
+                        )
+                    )
+                }
+            }
+        }
+    } else {
+        for (node in fallbackNodes) {
+            if (node.parada) {
+                candidates.add(
+                    Candidate(
+                        node = node,
+                        lineCode = "",
+                        lineName = "",
+                        colorHex = "#35399D"
+                    )
+                )
+            }
+        }
+    }
+
+    val result = mutableListOf<MapBusStop>()
+    val maxDistMetersSq = 15.0 * 15.0
+
+    for (c in candidates) {
+        val lat = c.node.latitud
+        val lon = c.node.longitud
+        val code = c.node.codigoParada?.trim()?.takeIf { it.isNotEmpty() }
+        val name = sanitizeStopDescription(c.node.descripcionParada ?: "")
+
+        var matchedIndex = -1
+        for (i in result.indices) {
+            val existing = result[i]
+            val codeMatch = code != null && existing.code != null && code.equals(existing.code, ignoreCase = true)
+            if (codeMatch) {
+                matchedIndex = i
+                break
+            }
+            val dLatM = (lat - existing.latitude) * 111000.0
+            val dLonM = (lon - existing.longitude) * 100700.0
+            if (dLatM * dLatM + dLonM * dLonM <= maxDistMetersSq) {
+                matchedIndex = i
+                break
+            }
+        }
+
+        if (matchedIndex >= 0) {
+            val existing = result[matchedIndex]
+            val newLineCodes = if (c.lineCode.isNotEmpty() && !existing.lineCodes.contains(c.lineCode)) {
+                existing.lineCodes + c.lineCode
+            } else existing.lineCodes
+
+            val newLineNames = if (c.lineName.isNotEmpty() && !existing.lineNames.contains(c.lineName)) {
+                existing.lineNames + c.lineName
+            } else existing.lineNames
+
+            val newColorHex = if (newLineCodes.size > 1) "#64748B" else existing.colorHex
+            val betterName = if (existing.name.isBlank() && name.isNotBlank()) name else existing.name
+            val betterCode = existing.code ?: code
+
+            result[matchedIndex] = existing.copy(
+                lineCodes = newLineCodes,
+                lineNames = newLineNames,
+                colorHex = newColorHex,
+                name = betterName,
+                code = betterCode
+            )
+        } else {
+            val lineCodes = if (c.lineCode.isNotEmpty()) listOf(c.lineCode) else emptyList()
+            val lineNames = if (c.lineName.isNotEmpty()) listOf(c.lineName) else emptyList()
+            val stopId = code ?: "stop_${lat}_${lon}"
+            result.add(
+                MapBusStop(
+                    id = stopId,
+                    latitude = lat,
+                    longitude = lon,
+                    name = if (name.isNotBlank()) name else "Parada de colectivo",
+                    code = code,
+                    lineCodes = lineCodes,
+                    lineNames = lineNames,
+                    colorHex = c.colorHex
+                )
+            )
+        }
+    }
+
+    return result
+}
+
 fun sanitizeStopDescription(raw: String): String {
     if (!raw.contains('\uFFFD')) return raw.trim()
 
@@ -250,16 +387,20 @@ data class BusPos(
 data class BusLiveDetails(
     val bus: BusPos,
     val speedKmh: Double? = null,
+    val averageSpeedKmh: Double? = null,
     val userNearestStopName: String? = null,
     val distanceToUserStopMeters: Double? = null,
     val nearestStopName: String? = null,
-    val distanceToNearestStopMeters: Double? = null
+    val distanceToNearestStopMeters: Double? = null,
+    val estimatedSecondsRemaining: Long? = null,
+    val estimatedArrivalEpochMs: Long? = null
 ) {
     fun formatSpeed(): String {
+        val spd = speedKmh ?: averageSpeedKmh
         return when {
-            speedKmh == null -> "Calculando..."
-            speedKmh < 3.0 -> "Detenido"
-            else -> "%.0f km/h".format(java.util.Locale.US, speedKmh)
+            spd == null -> "Calculando..."
+            spd < 3.0 -> "Detenido"
+            else -> "%.0f km/h".format(java.util.Locale.US, spd)
         }
     }
 
@@ -277,6 +418,47 @@ data class BusLiveDetails(
             dist == null -> ""
             dist < 1000 -> "a %.0f m".format(java.util.Locale.US, dist)
             else -> "a %.1f km".format(java.util.Locale.US, dist / 1000.0)
+        }
+    }
+
+    fun formatEstimatedTimeRemaining(): String? {
+        val sec = estimatedSecondsRemaining ?: return null
+        return when {
+            sec <= 15 -> "unos segundos"
+            sec < 45 -> "30 segundos"
+            sec < 90 -> "1 minuto"
+            sec < 3600 -> {
+                val mins = Math.round(sec / 60.0).toInt()
+                if (mins <= 1) "1 minuto" else "$mins minutos"
+            }
+            else -> {
+                val hours = sec / 3600
+                val remMins = Math.round((sec % 3600) / 60.0).toInt()
+                val hourStr = if (hours == 1L) "1 hora" else "$hours horas"
+                if (remMins > 0) {
+                    val minStr = if (remMins == 1) "1 minuto" else "$remMins minutos"
+                    "$hourStr y $minStr"
+                } else {
+                    hourStr
+                }
+            }
+        }
+    }
+
+    fun formatEstimatedArrivalTime(): String? {
+        val epoch = estimatedArrivalEpochMs ?: return null
+        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+        return "${sdf.format(Date(epoch))} hs"
+    }
+
+    fun formatEstimatedArrivalSummary(): String {
+        val rel = formatEstimatedTimeRemaining()
+        val abs = formatEstimatedArrivalTime()
+        return when {
+            rel != null && abs != null -> "Llega en $rel ($abs)"
+            rel != null -> "Llega en $rel"
+            (averageSpeedKmh ?: speedKmh) != null && (averageSpeedKmh ?: speedKmh)!! < 1.0 -> "Colectivo detenido"
+            else -> "Calculando tiempo..."
         }
     }
 }

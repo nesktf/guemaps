@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.data.local.GuemapsDatabase
+import com.nesktf.guemaps.data.model.ActiveLineData
 import com.nesktf.guemaps.data.model.BusCategory
 import com.nesktf.guemaps.data.model.BusGroupNode
 import com.nesktf.guemaps.data.model.BusLiveDetails
@@ -19,6 +20,8 @@ import com.nesktf.guemaps.data.model.BusNode
 import com.nesktf.guemaps.data.model.BusPos
 import com.nesktf.guemaps.data.model.BusStopRecord
 import com.nesktf.guemaps.data.model.FlatBusLine
+import com.nesktf.guemaps.data.model.MapBusStop
+import com.nesktf.guemaps.data.model.clusterBusStops
 import com.nesktf.guemaps.data.remote.SaetaApiClient
 import com.nesktf.guemaps.data.repository.BusRepository
 import kotlinx.coroutines.Job
@@ -49,15 +52,6 @@ val BUS_LINE_PALETTE = listOf(
     "#A12723",
     "#F9C628",
     "#3AAFD9"
-)
-
-data class ActiveLineData(
-    val line: FlatBusLine,
-    val colorHex: String,
-    val isLoadingRoute: Boolean = true,
-    val routeNodes: List<BusNode> = emptyList(),
-    val isRouteOffline: Boolean = false,
-    val activeBuses: List<BusPos> = emptyList()
 )
 
 data class MapCameraState(
@@ -91,6 +85,8 @@ data class MapUiState(
     val activeBuses: List<BusPos> = emptyList(),
     val busLiveDetails: Map<String, BusLiveDetails> = emptyMap(),
     val selectedBusInterno: String? = null,
+    val selectedReferenceStop: MapBusStop? = null,
+    val stopToastMessage: String? = null,
     val userLocation: Location? = null,
     val isLocatingUser: Boolean = false,
     val isSpeedCardExpanded: Boolean = true,
@@ -109,6 +105,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val MAX_SELECTED_LINES = 4
         const val POLLING_INTERVAL_MS = 10_000L // 10 seconds polling interval
+        const val SPEED_BUFFER_SIZE = 8
         private const val PREFS_NAME = "guemaps_prefs"
         private const val KEY_LAST_LINE_CODE = "last_line_code"
         private const val KEY_LAST_LINE_DESC = "last_line_desc"
@@ -122,6 +119,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private var busPollingJob: Job? = null
     private var locationTimeoutJob: Job? = null
     private val previousPositions = mutableMapOf<String, Pair<BusPos, Long>>()
+    private val speedHistory = mutableMapOf<String, ArrayDeque<Double>>()
     private val locationManager = application.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var locationListener: LocationListener? = null
 
@@ -274,6 +272,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        previousPositions.clear()
+        speedHistory.clear()
+
         linesToLoad.forEach { loadRouteForLine(it.codLinea) }
         restartActiveBusesPolling()
     }
@@ -405,7 +406,22 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
             val allNodes = updatedActiveMap.values.flatMap { it.routeNodes }
             val allBuses = updatedActiveMap.values.flatMap { it.activeBuses }
-            val details = computeLiveDetails(allBuses, allNodes)
+
+            // If selected bus belonged to removed line, clear it
+            val remainingInternos = allBuses.map { it.interno }.toSet()
+            val updatedSelectedBus = state.selectedBusInterno?.takeIf { remainingInternos.contains(it) }
+
+            speedHistory.keys.retainAll(remainingInternos)
+            previousPositions.keys.retainAll(remainingInternos)
+
+            // If selected reference stop belonged only to removed line, clear it
+            val updatedRefStop = state.selectedReferenceStop?.let { refStop ->
+                if (refStop.lineCodes.isEmpty() || refStop.lineCodes.any { lineCode -> updatedLines.any { it.codLinea == lineCode } }) {
+                    refStop
+                } else {
+                    null
+                }
+            }
 
             _uiState.update {
                 it.copy(
@@ -414,10 +430,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     selectedLine = updatedLines.firstOrNull(),
                     routeNodes = allNodes,
                     activeBuses = allBuses,
-                    busLiveDetails = details,
+                    selectedBusInterno = updatedSelectedBus,
+                    selectedReferenceStop = updatedRefStop,
                     errorMessage = null
                 )
             }
+            // Auto-select nearest stop from remaining lines if ref stop was cleared and user location exists
+            val userLoc = _uiState.value.userLocation
+            if (_uiState.value.selectedReferenceStop == null && userLoc != null) {
+                updateNearestReferenceStop(userLoc)
+            }
+            recalculateBusLiveDetails()
             if (updatedLines.isNotEmpty()) {
                 restartActiveBusesPolling()
             } else {
@@ -490,6 +513,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         isRouteOffline = allOffline,
                         isLoadingRoute = anyLoading
                     )
+                }
+                val userLoc = _uiState.value.userLocation
+                if (_uiState.value.selectedReferenceStop == null && userLoc != null) {
+                    updateNearestReferenceStop(userLoc)
                 }
                 recalculateBusLiveDetails()
             }.onFailure { error ->
@@ -579,15 +606,25 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     ): Map<String, BusLiveDetails> {
         val stops = allNodes.filter { it.parada }
         val userLoc = _uiState.value.userLocation
+        val selectedRefStop = _uiState.value.selectedReferenceStop
 
-        // Find the bus stop on this route closest to the USER using fast squared distance
-        val userNearestStop = if (userLoc != null && stops.isNotEmpty()) {
-            stops.minByOrNull {
-                val dLat = userLoc.latitude - it.latitud
-                val dLon = userLoc.longitude - it.longitud
-                dLat * dLat + dLon * dLon
+        // If user has a selected reference stop, use that! Otherwise find the bus stop on this route closest to the USER
+        val (refStopLat, refStopLon, refStopName) = if (selectedRefStop != null) {
+            Triple(selectedRefStop.latitude, selectedRefStop.longitude, selectedRefStop.name.takeIf { it.isNotBlank() } ?: selectedRefStop.code)
+        } else {
+            val userNearestStop = if (userLoc != null && stops.isNotEmpty()) {
+                stops.minByOrNull {
+                    val dLat = userLoc.latitude - it.latitud
+                    val dLon = userLoc.longitude - it.longitud
+                    dLat * dLat + dLon * dLon
+                }
+            } else null
+            if (userNearestStop != null) {
+                Triple(userNearestStop.latitud, userNearestStop.longitud, userNearestStop.descripcionParada?.takeIf { it.isNotBlank() } ?: userNearestStop.codigoParada)
+            } else {
+                Triple(null, null, null)
             }
-        } else null
+        }
 
         val detailsMap = mutableMapOf<String, BusLiveDetails>()
 
@@ -604,14 +641,25 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
-            previousPositions[bus.interno] = Pair(bus, now)
+            if (prev == null || (now - prev.second) >= 3000L) {
+                previousPositions[bus.interno] = Pair(bus, now)
+            }
 
-            // 1. Distance between this bus and the closest bus stop to the user
+            val deque = speedHistory.getOrPut(bus.interno) { ArrayDeque(SPEED_BUFFER_SIZE) }
+            if (speed != null) {
+                deque.addLast(speed)
+                while (deque.size > SPEED_BUFFER_SIZE) {
+                    deque.removeFirst()
+                }
+            }
+            val avgSpeed = if (deque.isNotEmpty()) deque.average() else speed
+
+            // 1. Distance between this bus and the reference stop (selected or closest to user)
             var userStopDist: Double? = null
             var userStopName: String? = null
-            if (userNearestStop != null) {
-                userStopDist = calculateDistanceMeters(bus.latitud, bus.longitud, userNearestStop.latitud, userNearestStop.longitud)
-                userStopName = userNearestStop.descripcionParada?.takeIf { it.isNotBlank() } ?: userNearestStop.codigoParada
+            if (refStopLat != null && refStopLon != null) {
+                userStopDist = calculateDistanceMeters(bus.latitud, bus.longitud, refStopLat, refStopLon)
+                userStopName = refStopName
             }
 
             // 2. Distance to nearest stop of the bus itself (fallback) using fast search
@@ -629,13 +677,34 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            // 3. Estimated waiting time to reference stop
+            var estimatedSeconds: Long? = null
+            var estimatedArrivalEpoch: Long? = null
+            if (userStopDist != null) {
+                if (userStopDist <= 25.0) {
+                    estimatedSeconds = 0L
+                    estimatedArrivalEpoch = now
+                } else {
+                    val effectiveSpeed = avgSpeed ?: speed
+                    if (effectiveSpeed != null && effectiveSpeed >= 1.0) {
+                        val speedMps = effectiveSpeed / 3.6
+                        val secs = Math.round(userStopDist / speedMps)
+                        estimatedSeconds = secs
+                        estimatedArrivalEpoch = now + (secs * 1000L)
+                    }
+                }
+            }
+
             detailsMap[bus.interno] = BusLiveDetails(
                 bus = bus,
                 speedKmh = speed,
+                averageSpeedKmh = avgSpeed,
                 userNearestStopName = userStopName,
                 distanceToUserStopMeters = userStopDist,
                 nearestStopName = busStopName ?: bus.proximaParada,
-                distanceToNearestStopMeters = busStopDist
+                distanceToNearestStopMeters = busStopDist,
+                estimatedSecondsRemaining = estimatedSeconds,
+                estimatedArrivalEpochMs = estimatedArrivalEpoch
             )
         }
 
@@ -647,6 +716,47 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         if (current.isNotEmpty()) {
             val details = computeLiveDetails(current)
             _uiState.update { it.copy(busLiveDetails = details) }
+        }
+    }
+
+    private fun updateNearestReferenceStop(userLoc: Location) {
+        val activeLinesList = _uiState.value.activeLines.values.toList()
+        val allStops = clusterBusStops(activeLinesList, _uiState.value.routeNodes)
+        if (allStops.isEmpty()) return
+
+        val nearest = allStops.minByOrNull { stop ->
+            val dLat = (userLoc.latitude - stop.latitude) * 111000.0
+            val dLon = (userLoc.longitude - stop.longitude) * 100700.0
+            dLat * dLat + dLon * dLon
+        }
+        if (nearest != null) {
+            _uiState.update { it.copy(selectedReferenceStop = nearest) }
+        }
+    }
+
+    fun selectNearestStopToUser() {
+        val userLoc = _uiState.value.userLocation ?: return
+        val activeLinesList = _uiState.value.activeLines.values.toList()
+        val allStops = clusterBusStops(activeLinesList, _uiState.value.routeNodes)
+        if (allStops.isEmpty()) {
+            showStopToast("No hay paradas disponibles")
+            return
+        }
+
+        val nearest = allStops.minByOrNull { stop ->
+            val dLat = (userLoc.latitude - stop.latitude) * 111000.0
+            val dLon = (userLoc.longitude - stop.longitude) * 100700.0
+            dLat * dLat + dLon * dLon
+        }
+        if (nearest != null) {
+            selectReferenceStop(nearest)
+            val stopName = nearest.name.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
+            val linesText = if (nearest.lineNames.isNotEmpty()) {
+                if (nearest.lineNames.size == 1) "Línea ${nearest.lineNames.first()}"
+                else "Líneas: ${nearest.lineNames.joinToString(", ")}"
+            } else ""
+            val msg = if (linesText.isNotBlank()) "$stopName\n$linesText" else stopName
+            showStopToast(msg)
         }
     }
 
@@ -662,14 +772,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
         _uiState.update { it.copy(isLocatingUser = true) }
 
-        // Check if last known location is available
-        val providers = listOfNotNull(
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) LocationManager.GPS_PROVIDER else null,
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) LocationManager.NETWORK_PROVIDER else null
-        )
+        // Check if last known location is available across all providers
+        val allProviders = try { locationManager.allProviders } catch (_: Exception) { emptyList() }
 
         var bestLast: Location? = null
-        for (p in providers) {
+        for (p in allProviders) {
             try {
                 val loc = locationManager.getLastKnownLocation(p)
                 if (loc != null && (bestLast == null || loc.time > bestLast.time)) {
@@ -702,7 +809,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
         locationListener = listener
 
-        for (p in providers) {
+        val enabledProviders = try { locationManager.getProviders(true) } catch (_: Exception) { emptyList() }
+        for (p in enabledProviders) {
             try {
                 locationManager.requestLocationUpdates(
                     p,
@@ -740,11 +848,42 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun setUserLocationInternal(location: Location) {
         _uiState.update { it.copy(userLocation = location) }
+        if (_uiState.value.selectedReferenceStop == null) {
+            updateNearestReferenceStop(location)
+        }
         recalculateBusLiveDetails()
     }
 
     fun selectBusForFloatingCard(interno: String) {
-        _uiState.update { it.copy(selectedBusInterno = interno) }
+        _uiState.update { state ->
+            val newSelection = if (state.selectedBusInterno == interno) null else interno
+            state.copy(selectedBusInterno = newSelection)
+        }
+    }
+
+    fun clearSelectedBus() {
+        _uiState.update { it.copy(selectedBusInterno = null) }
+    }
+
+    fun selectReferenceStop(stop: MapBusStop?) {
+        _uiState.update { it.copy(selectedReferenceStop = stop) }
+        recalculateBusLiveDetails()
+    }
+
+    private var stopToastJob: Job? = null
+
+    fun showStopToast(message: String) {
+        stopToastJob?.cancel()
+        _uiState.update { it.copy(stopToastMessage = message) }
+        stopToastJob = viewModelScope.launch {
+            delay(3500L)
+            _uiState.update { it.copy(stopToastMessage = null) }
+        }
+    }
+
+    fun clearStopToast() {
+        stopToastJob?.cancel()
+        _uiState.update { it.copy(stopToastMessage = null) }
     }
 
     fun toggleSpeedCardExpanded() {
@@ -884,6 +1023,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         busPollingJob?.cancel()
         locationTimeoutJob?.cancel()
         syncJob?.cancel()
+        stopToastJob?.cancel()
         stopLocationUpdates()
     }
 }
