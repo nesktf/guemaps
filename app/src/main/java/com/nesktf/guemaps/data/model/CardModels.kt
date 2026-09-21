@@ -72,6 +72,32 @@ class MonederoWrapperDeserializer : JsonDeserializer<MonederoWrapper> {
     }
 }
 
+object MoneyFormatter {
+    fun format(amount: Double?): String {
+        if (amount == null) return "-"
+        val valueStr = String.format(Locale.US, "%.2f", amount)
+        return "$ $valueStr"
+    }
+
+    fun format(raw: String?): String {
+        if (raw.isNullOrBlank()) return "-"
+        val clean = raw.replace("$", "").trim()
+        val normalized = if (clean.contains(",") && clean.contains(".")) {
+            clean.replace(".", "").replace(",", ".")
+        } else if (clean.contains(",")) {
+            clean.replace(",", ".")
+        } else {
+            clean
+        }
+        val d = normalized.toDoubleOrNull()
+        return if (d != null) {
+            format(d)
+        } else {
+            if (clean.isEmpty()) "-" else "$ $clean"
+        }
+    }
+}
+
 data class CardBalance(
     @SerializedName("id") val id: Int? = null,
     @SerializedName("nombre") val nombre: String? = null,
@@ -82,24 +108,13 @@ data class CardBalance(
     val rawSaldoString: String? = null
 ) {
     fun formatDisplay(): String {
-        val prefix = prefijoSaldo?.trim() ?: ""
-        val suffix = sufijoSaldo?.trim() ?: ""
-        val valueStr = when {
-            saldo != null -> {
-                if (saldo % 1.0 == 0.0) {
-                    saldo.toInt().toString()
-                } else {
-                    String.format(Locale.US, "%.2f", saldo)
-                }
-            }
-            !rawSaldoString.isNullOrBlank() -> rawSaldoString
-            else -> "-"
+        return if (saldo != null) {
+            MoneyFormatter.format(saldo)
+        } else if (!rawSaldoString.isNullOrBlank()) {
+            MoneyFormatter.format(rawSaldoString)
+        } else {
+            "-"
         }
-        return buildString {
-            if (prefix.isNotEmpty()) append("$prefix ")
-            append(valueStr)
-            if (suffix.isNotEmpty()) append(" $suffix")
-        }.trim()
     }
 }
 

@@ -1,7 +1,12 @@
 package com.nesktf.guemaps.ui.balance
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.data.local.GuemapsDatabase
@@ -37,6 +42,8 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
 
     private val repository: CardRepository
     private val busRepository: BusRepository
+    private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     private val _uiState = MutableStateFlow(BalanceUiState())
     val uiState: StateFlow<BalanceUiState> = _uiState.asStateFlow()
@@ -50,6 +57,7 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
         loadFavoriteCards()
         loadCaptcha()
         loadTarifas()
+        setupNetworkCallback()
     }
 
     fun loadTarifas(forceNetwork: Boolean = false) {
@@ -91,8 +99,7 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update {
                     it.copy(
                         isLoadingCaptcha = false,
-                        captchaBitmap = bitmap,
-                        errorMessage = null
+                        captchaBitmap = bitmap
                     )
                 }
             }.onFailure { error ->
@@ -120,6 +127,10 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(cardNumber = cardNumber) }
     }
 
+    fun clearBalanceResponse() {
+        _uiState.update { it.copy(balanceResponse = null) }
+    }
+
     fun loadRecentCards() {
         viewModelScope.launch {
             val recents = repository.getRecentCards()
@@ -139,7 +150,7 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isCheckingBalance = true, errorMessage = null, balanceResponse = null) }
+            _uiState.update { it.copy(isCheckingBalance = true, balanceResponse = null) }
             val result = repository.checkBalance(current.cardNumber, current.captchaInput)
             result.onSuccess { response ->
                 if (response.error == 0) {
@@ -147,10 +158,12 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
                         it.copy(
                             isCheckingBalance = false,
                             balanceResponse = response,
-                            errorMessage = null
+                            errorMessage = null,
+                            captchaInput = ""
                         )
                     }
                     loadRecentCards()
+                    loadCaptcha()
                 } else {
                     val errorMsg = response.getErrorMessage() ?: "Error al consultar saldo"
                     _uiState.update {
@@ -173,6 +186,29 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             }
+        }
+    }
+
+    private fun setupNetworkCallback() {
+        try {
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    loadTarifas(forceNetwork = true)
+                }
+            }
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivityManager.registerNetworkCallback(request, callback)
+            networkCallback = callback
+        } catch (_: Exception) {}
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        networkCallback?.let {
+            try { connectivityManager.unregisterNetworkCallback(it) } catch (_: Exception) {}
+            networkCallback = null
         }
     }
 }

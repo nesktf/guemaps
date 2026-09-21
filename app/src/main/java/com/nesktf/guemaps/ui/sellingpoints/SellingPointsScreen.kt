@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.nesktf.guemaps.data.model.SellingPoint
 import com.nesktf.guemaps.ui.map.MapActions
@@ -189,6 +190,8 @@ fun SellingPointsScreen(
                             label = {
                                 Text(
                                     text = "Todos (${state.sellingPoints.size})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -198,13 +201,15 @@ fun SellingPointsScreen(
                                 selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         FilterChip(
                             selected = state.filter == SellingPointFilter.ATM,
                             onClick = { viewModel.setFilter(SellingPointFilter.ATM) },
                             label = {
                                 Text(
                                     text = "ATMs (${state.atmCount})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -214,13 +219,15 @@ fun SellingPointsScreen(
                                 selectedLabelColor = Color(0xFF0369A1)
                             )
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         FilterChip(
                             selected = state.filter == SellingPointFilter.COMMERCE,
                             onClick = { viewModel.setFilter(SellingPointFilter.COMMERCE) },
                             label = {
                                 Text(
                                     text = "Comercios (${state.commerceCount})",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 11.sp,
                                     maxLines = 1,
                                     softWrap = false
                                 )

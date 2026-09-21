@@ -80,6 +80,24 @@ class CardModelsTest {
             unidadPasajes = true,
             saldo = 40.0
         )
-        assertEquals("40 pasajes", monedero.formatDisplay())
+        assertEquals("$ 40.00", monedero.formatDisplay())
+    }
+
+    @Test
+    fun testMoneyFormatterAndTarifas() {
+        val tarifa1 = com.nesktf.guemaps.data.model.TarifaItem(key = "Boleto Común", value = "$1.450,00")
+        assertEquals("$ 1450.00", tarifa1.formatDisplay())
+
+        val tarifa2 = com.nesktf.guemaps.data.model.TarifaItem(key = "Abono Social", value = "$870,00")
+        assertEquals("$ 870.00", tarifa2.formatDisplay())
+
+        val tarifaWithCents = com.nesktf.guemaps.data.model.TarifaItem(key = "Especial", value = "$1.234,50")
+        assertEquals("$ 1234.50", tarifaWithCents.formatDisplay())
+
+        val balance = CardBalance(saldo = 1450.50)
+        assertEquals("$ 1450.50", balance.formatDisplay())
+
+        val balanceInt = CardBalance(saldo = 1450.0)
+        assertEquals("$ 1450.00", balanceInt.formatDisplay())
     }
 }

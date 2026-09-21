@@ -327,7 +327,9 @@ data class TarifaItem(
     @SerializedName("icon") val icon: String? = null,
     @SerializedName("key") val key: String = "",
     @SerializedName("value") val value: String = ""
-)
+) {
+    fun formatDisplay(): String = MoneyFormatter.format(value)
+}
 
 data class ConfigResponse(
     @SerializedName("error") val error: Int = 0,
