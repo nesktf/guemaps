@@ -9,10 +9,12 @@ import com.nesktf.guemaps.data.model.BusGroupsResponse
 import com.nesktf.guemaps.data.model.BusRouteResponse
 import com.nesktf.guemaps.data.model.BusStopRecord
 import com.nesktf.guemaps.data.model.FlatBusLine
+import com.nesktf.guemaps.data.model.NewsArticle
 import com.nesktf.guemaps.data.model.SavedCard
 import com.nesktf.guemaps.data.model.SellingPoint
 import com.nesktf.guemaps.data.model.TarifaItem
 import com.nesktf.guemaps.data.model.computeRouteHash
+import com.nesktf.guemaps.data.model.sortedByMostRecent
 
 class GuemapsDatabase(
     context: Context,
@@ -21,7 +23,7 @@ class GuemapsDatabase(
 
     companion object {
         const val DATABASE_NAME = "guemaps.db"
-        const val DATABASE_VERSION = 5
+        const val DATABASE_VERSION = 6
 
         private const val TABLE_BUS_GROUPS = "bus_groups_cache"
         private const val COL_BG_ID = "id"
@@ -72,6 +74,16 @@ class GuemapsDatabase(
         private const val COL_TC_ID = "id"
         private const val COL_TC_JSON = "tarifas_json"
         private const val COL_TC_UPDATED_AT = "updated_at"
+
+        private const val TABLE_NEWS_ARTICLES = "news_articles"
+        private const val COL_NA_ID = "id"
+        private const val COL_NA_TITLE = "title"
+        private const val COL_NA_DATE = "date_str"
+        private const val COL_NA_SUMMARY = "summary"
+        private const val COL_NA_IMAGE_URL = "image_url"
+        private const val COL_NA_CONTENT_HTML = "content_html"
+        private const val COL_NA_IS_READ = "is_read"
+        private const val COL_NA_CACHED_AT = "cached_at"
     }
 
     override fun onOpen(db: SQLiteDatabase) {
@@ -170,6 +182,21 @@ class GuemapsDatabase(
                 $COL_TC_ID INTEGER PRIMARY KEY,
                 $COL_TC_JSON TEXT NOT NULL,
                 $COL_TC_UPDATED_AT INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_NEWS_ARTICLES (
+                $COL_NA_ID TEXT PRIMARY KEY,
+                $COL_NA_TITLE TEXT NOT NULL,
+                $COL_NA_DATE TEXT NOT NULL,
+                $COL_NA_SUMMARY TEXT NOT NULL,
+                $COL_NA_IMAGE_URL TEXT NOT NULL,
+                $COL_NA_CONTENT_HTML TEXT,
+                $COL_NA_IS_READ INTEGER NOT NULL DEFAULT 0,
+                $COL_NA_CACHED_AT INTEGER NOT NULL
             )
             """.trimIndent()
         )
@@ -637,6 +664,131 @@ class GuemapsDatabase(
             } else {
                 null
             }
+        }
+    }
+
+    // --- News Articles Cache ---
+
+    fun saveNewsArticles(articles: List<NewsArticle>, maxKeep: Int = 16) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (article in articles.take(maxKeep)) {
+                val cursor = db.query(
+                    TABLE_NEWS_ARTICLES,
+                    arrayOf(COL_NA_IS_READ, COL_NA_CONTENT_HTML),
+                    "$COL_NA_ID = ?",
+                    arrayOf(article.id),
+                    null, null, null
+                )
+                var existingIsRead = article.isRead
+                var existingContent = article.contentHtml
+                cursor.use {
+                    if (it.moveToFirst()) {
+                        existingIsRead = it.getInt(0) == 1
+                        if (existingContent == null && !it.isNull(1)) {
+                            existingContent = it.getString(1)
+                        }
+                    }
+                }
+
+                val values = ContentValues().apply {
+                    put(COL_NA_ID, article.id)
+                    put(COL_NA_TITLE, article.title)
+                    put(COL_NA_DATE, article.date)
+                    put(COL_NA_SUMMARY, article.summary)
+                    put(COL_NA_IMAGE_URL, article.imageUrl)
+                    put(COL_NA_CONTENT_HTML, existingContent)
+                    put(COL_NA_IS_READ, if (existingIsRead) 1 else 0)
+                    put(COL_NA_CACHED_AT, article.cachedAt)
+                }
+                db.insertWithOnConflict(TABLE_NEWS_ARTICLES, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+
+            val keepIds = articles.take(maxKeep).map { it.id }
+            if (keepIds.isNotEmpty()) {
+                val placeholders = keepIds.joinToString(",") { "?" }
+                db.delete(TABLE_NEWS_ARTICLES, "$COL_NA_ID NOT IN ($placeholders)", keepIds.toTypedArray())
+            }
+
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getNewsArticles(): List<NewsArticle> {
+        val db = readableDatabase
+        val list = mutableListOf<NewsArticle>()
+        val cursor = db.query(
+            TABLE_NEWS_ARTICLES,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "CAST($COL_NA_ID AS INTEGER) DESC"
+        )
+        cursor.use {
+            val idIdx = it.getColumnIndexOrThrow(COL_NA_ID)
+            val titleIdx = it.getColumnIndexOrThrow(COL_NA_TITLE)
+            val dateIdx = it.getColumnIndexOrThrow(COL_NA_DATE)
+            val summaryIdx = it.getColumnIndexOrThrow(COL_NA_SUMMARY)
+            val imgIdx = it.getColumnIndexOrThrow(COL_NA_IMAGE_URL)
+            val contentIdx = it.getColumnIndexOrThrow(COL_NA_CONTENT_HTML)
+            val readIdx = it.getColumnIndexOrThrow(COL_NA_IS_READ)
+            val cachedIdx = it.getColumnIndexOrThrow(COL_NA_CACHED_AT)
+
+            while (it.moveToNext()) {
+                list.add(
+                    NewsArticle(
+                        id = it.getString(idIdx),
+                        title = it.getString(titleIdx),
+                        date = it.getString(dateIdx),
+                        summary = it.getString(summaryIdx),
+                        imageUrl = it.getString(imgIdx),
+                        contentHtml = if (!it.isNull(contentIdx)) it.getString(contentIdx) else null,
+                        isRead = it.getInt(readIdx) == 1,
+                        cachedAt = it.getLong(cachedIdx)
+                    )
+                )
+            }
+        }
+        return list.sortedByMostRecent()
+    }
+
+    fun updateArticleContent(id: String, contentHtml: String) {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_NA_CONTENT_HTML, contentHtml)
+        }
+        db.update(TABLE_NEWS_ARTICLES, values, "$COL_NA_ID = ?", arrayOf(id))
+    }
+
+    fun markArticleAsRead(id: String) {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_NA_IS_READ, 1)
+        }
+        db.update(TABLE_NEWS_ARTICLES, values, "$COL_NA_ID = ?", arrayOf(id))
+    }
+
+    fun markAllArticlesAsRead() {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_NA_IS_READ, 1)
+        }
+        db.update(TABLE_NEWS_ARTICLES, values, null, null)
+    }
+
+    fun getUnreadNewsCount(): Int {
+        val db = readableDatabase
+        val cursor = db.rawQuery(
+            "SELECT COUNT(*) FROM $TABLE_NEWS_ARTICLES WHERE $COL_NA_IS_READ = 0",
+            null
+        )
+        return cursor.use {
+            if (it.moveToFirst()) it.getInt(0) else 0
         }
     }
 }

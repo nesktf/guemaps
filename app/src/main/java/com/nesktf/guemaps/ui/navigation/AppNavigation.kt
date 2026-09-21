@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -18,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,13 +33,16 @@ import com.nesktf.guemaps.ui.balance.BalanceScreen
 import com.nesktf.guemaps.ui.balance.BalanceViewModel
 import com.nesktf.guemaps.ui.map.MapScreen
 import com.nesktf.guemaps.ui.map.MapViewModel
+import com.nesktf.guemaps.ui.news.NewsScreen
+import com.nesktf.guemaps.ui.news.NewsViewModel
 import com.nesktf.guemaps.ui.sellingpoints.SellingPointsScreen
 import com.nesktf.guemaps.ui.sellingpoints.SellingPointsViewModel
 
 enum class AppDestination(val label: String) {
     MAP("Recorridos"),
     SELLING_POINTS("Puntos de venta"),
-    BALANCE("Saldo")
+    BALANCE("Saldo"),
+    NEWS("Noticias")
 }
 
 @Composable
@@ -49,6 +56,9 @@ fun AppNavigation(
     val mapViewModel: MapViewModel = viewModel()
     val sellingPointsViewModel: SellingPointsViewModel = viewModel()
     val balanceViewModel: BalanceViewModel = viewModel()
+    val newsViewModel: NewsViewModel = viewModel()
+
+    val unreadNewsCount by newsViewModel.unreadCount.collectAsState()
 
     if (showAboutScreen) {
         AboutScreen(onBack = { showAboutScreen = false })
@@ -88,6 +98,24 @@ fun AppNavigation(
                         },
                         label = { Text("Saldo") }
                     )
+                    NavigationBarItem(
+                        selected = currentDestination == AppDestination.NEWS,
+                        onClick = { currentDestination = AppDestination.NEWS },
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (unreadNewsCount > 0) {
+                                        Badge {
+                                            Text(if (unreadNewsCount > 9) "9+" else unreadNewsCount.toString())
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Article, contentDescription = "Noticias")
+                            }
+                        },
+                        label = { Text("Noticias") }
+                    )
                 }
             },
             modifier = modifier.fillMaxSize()
@@ -110,6 +138,13 @@ fun AppNavigation(
                 AppDestination.BALANCE -> {
                     BalanceScreen(
                         viewModel = balanceViewModel,
+                        onOpenAbout = { showAboutScreen = true },
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+                AppDestination.NEWS -> {
+                    NewsScreen(
+                        viewModel = newsViewModel,
                         onOpenAbout = { showAboutScreen = true },
                         modifier = Modifier.padding(innerPadding)
                     )
