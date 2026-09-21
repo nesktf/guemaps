@@ -10,6 +10,8 @@ import com.nesktf.guemaps.data.model.BusRouteResponse
 import com.nesktf.guemaps.data.model.BusStopRecord
 import com.nesktf.guemaps.data.model.FlatBusLine
 import com.nesktf.guemaps.data.model.SavedCard
+import com.nesktf.guemaps.data.model.SellingPoint
+import com.nesktf.guemaps.data.model.TarifaItem
 import com.nesktf.guemaps.data.model.computeRouteHash
 
 class GuemapsDatabase(
@@ -19,7 +21,7 @@ class GuemapsDatabase(
 
     companion object {
         const val DATABASE_NAME = "guemaps.db"
-        const val DATABASE_VERSION = 4
+        const val DATABASE_VERSION = 5
 
         private const val TABLE_BUS_GROUPS = "bus_groups_cache"
         private const val COL_BG_ID = "id"
@@ -55,6 +57,21 @@ class GuemapsDatabase(
         private const val COL_FC_CARD_NUMBER = "card_number"
         private const val COL_FC_ALIAS = "alias"
         private const val COL_FC_ADDED_AT = "added_at"
+
+        private const val TABLE_SELLING_POINTS = "selling_points"
+        private const val COL_SP_ID = "id"
+        private const val COL_SP_TIPO = "tipo"
+        private const val COL_SP_NOMBRE = "nombre"
+        private const val COL_SP_DOMICILIO = "domicilio"
+        private const val COL_SP_DETALLE = "detalle_domicilio"
+        private const val COL_SP_LAT = "latitude"
+        private const val COL_SP_LON = "longitude"
+        private const val COL_SP_UPDATED_AT = "updated_at"
+
+        private const val TABLE_TARIFAS = "tarifas_cache"
+        private const val COL_TC_ID = "id"
+        private const val COL_TC_JSON = "tarifas_json"
+        private const val COL_TC_UPDATED_AT = "updated_at"
     }
 
     override fun onOpen(db: SQLiteDatabase) {
@@ -131,6 +148,31 @@ class GuemapsDatabase(
             )
             """.trimIndent()
         )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_SELLING_POINTS (
+                $COL_SP_ID INTEGER PRIMARY KEY,
+                $COL_SP_TIPO INTEGER,
+                $COL_SP_NOMBRE TEXT NOT NULL,
+                $COL_SP_DOMICILIO TEXT NOT NULL,
+                $COL_SP_DETALLE TEXT,
+                $COL_SP_LAT REAL,
+                $COL_SP_LON REAL,
+                $COL_SP_UPDATED_AT INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_TARIFAS (
+                $COL_TC_ID INTEGER PRIMARY KEY,
+                $COL_TC_JSON TEXT NOT NULL,
+                $COL_TC_UPDATED_AT INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -143,6 +185,10 @@ class GuemapsDatabase(
             try {
                 db.execSQL("UPDATE $TABLE_BUS_ROUTES SET $COL_BR_ROUTE_HASH = ''")
             } catch (_: Exception) {}
+        }
+        if (oldVersion < 5) {
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_SELLING_POINTS")
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_TARIFAS")
         }
         onCreate(db)
     }
@@ -499,4 +545,99 @@ class GuemapsDatabase(
         }
         return list
     }
+
+    // --- Selling Points Cache ---
+
+    fun saveSellingPoints(points: List<SellingPoint>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete(TABLE_SELLING_POINTS, null, null)
+            for (point in points) {
+                val values = ContentValues().apply {
+                    put(COL_SP_ID, point.id)
+                    put(COL_SP_TIPO, point.tipo)
+                    put(COL_SP_NOMBRE, point.nombre)
+                    put(COL_SP_DOMICILIO, point.domicilio)
+                    put(COL_SP_DETALLE, point.detalleDomicilio)
+                    put(COL_SP_LAT, point.latitud)
+                    put(COL_SP_LON, point.longitud)
+                    put(COL_SP_UPDATED_AT, System.currentTimeMillis())
+                }
+                db.insertWithOnConflict(TABLE_SELLING_POINTS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun getSellingPoints(): List<SellingPoint> {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_SELLING_POINTS,
+            arrayOf(COL_SP_ID, COL_SP_TIPO, COL_SP_NOMBRE, COL_SP_DOMICILIO, COL_SP_DETALLE, COL_SP_LAT, COL_SP_LON),
+            null,
+            null,
+            null,
+            null,
+            "$COL_SP_NOMBRE ASC"
+        )
+        val list = mutableListOf<SellingPoint>()
+        cursor.use {
+            while (it.moveToNext()) {
+                list.add(
+                    SellingPoint(
+                        id = it.getLong(0),
+                        tipo = if (it.isNull(1)) null else it.getInt(1),
+                        nombre = it.getString(2) ?: "",
+                        domicilio = it.getString(3) ?: "",
+                        detalleDomicilio = if (it.isNull(4)) null else it.getString(4),
+                        latitud = if (it.isNull(5)) null else it.getDouble(5),
+                        longitud = if (it.isNull(6)) null else it.getDouble(6)
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    // --- Tarifas Cache ---
+
+    fun saveTarifas(tarifas: List<TarifaItem>) {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(COL_TC_ID, 1)
+            put(COL_TC_JSON, gson.toJson(tarifas))
+            put(COL_TC_UPDATED_AT, System.currentTimeMillis())
+        }
+        db.insertWithOnConflict(TABLE_TARIFAS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun getCachedTarifas(): List<TarifaItem>? {
+        val db = readableDatabase
+        val cursor = db.query(
+            TABLE_TARIFAS,
+            arrayOf(COL_TC_JSON),
+            "$COL_TC_ID = 1",
+            null,
+            null,
+            null,
+            null
+        )
+        return cursor.use {
+            if (it.moveToFirst()) {
+                val json = it.getString(0)
+                val type = object : com.google.gson.reflect.TypeToken<List<TarifaItem>>() {}.type
+                try {
+                    gson.fromJson<List<TarifaItem>>(json, type)
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+        }
+    }
 }
+

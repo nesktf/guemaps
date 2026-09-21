@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.model.CardBalanceResponse
 import com.nesktf.guemaps.data.model.SavedCard
+import com.nesktf.guemaps.data.model.TarifaItem
 import com.nesktf.guemaps.data.remote.SaetaApiClient
+import com.nesktf.guemaps.data.repository.BusRepository
 import com.nesktf.guemaps.data.repository.CardRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,12 +27,16 @@ data class BalanceUiState(
     val errorMessage: String? = null,
     val recentCards: List<SavedCard> = emptyList(),
     val favoriteCards: List<SavedCard> = emptyList(),
-    val favoriteCardNumbers: Set<String> = emptySet()
+    val favoriteCardNumbers: Set<String> = emptySet(),
+    val tarifas: List<TarifaItem> = emptyList(),
+    val isLoadingTarifas: Boolean = false,
+    val tarifasError: String? = null
 )
 
 class BalanceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: CardRepository
+    private val busRepository: BusRepository
 
     private val _uiState = MutableStateFlow(BalanceUiState())
     val uiState: StateFlow<BalanceUiState> = _uiState.asStateFlow()
@@ -39,9 +45,23 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
         val database = GuemapsDatabase(application)
         val apiClient = SaetaApiClient()
         repository = CardRepository(apiClient, database)
+        busRepository = BusRepository(apiClient, database)
         loadRecentCards()
         loadFavoriteCards()
         loadCaptcha()
+        loadTarifas()
+    }
+
+    fun loadTarifas(forceNetwork: Boolean = false) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingTarifas = true, tarifasError = null) }
+            val res = busRepository.getTarifas(forceNetwork)
+            res.onSuccess { list ->
+                _uiState.update { it.copy(isLoadingTarifas = false, tarifas = list, tarifasError = null) }
+            }.onFailure { err ->
+                _uiState.update { it.copy(isLoadingTarifas = false, tarifasError = err.localizedMessage) }
+            }
+        }
     }
 
     fun loadFavoriteCards() {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -28,9 +29,12 @@ import com.nesktf.guemaps.ui.balance.BalanceScreen
 import com.nesktf.guemaps.ui.balance.BalanceViewModel
 import com.nesktf.guemaps.ui.map.MapScreen
 import com.nesktf.guemaps.ui.map.MapViewModel
+import com.nesktf.guemaps.ui.sellingpoints.SellingPointsScreen
+import com.nesktf.guemaps.ui.sellingpoints.SellingPointsViewModel
 
 enum class AppDestination(val label: String) {
-    MAP("Mapa"),
+    MAP("Recorridos"),
+    SELLING_POINTS("Puntos de venta"),
     BALANCE("Saldo")
 }
 
@@ -43,6 +47,7 @@ fun AppNavigation(
 
     // Shared or scoped ViewModels
     val mapViewModel: MapViewModel = viewModel()
+    val sellingPointsViewModel: SellingPointsViewModel = viewModel()
     val balanceViewModel: BalanceViewModel = viewModel()
 
     if (showAboutScreen) {
@@ -63,9 +68,17 @@ fun AppNavigation(
                         selected = currentDestination == AppDestination.MAP,
                         onClick = { currentDestination = AppDestination.MAP },
                         icon = {
-                            Icon(Icons.Default.Map, contentDescription = "Mapa")
+                            Icon(Icons.Default.Map, contentDescription = "Recorridos")
                         },
                         label = { Text("Recorridos") }
+                    )
+                    NavigationBarItem(
+                        selected = currentDestination == AppDestination.SELLING_POINTS,
+                        onClick = { currentDestination = AppDestination.SELLING_POINTS },
+                        icon = {
+                            Icon(Icons.Default.Storefront, contentDescription = "Puntos de venta")
+                        },
+                        label = { Text("Puntos de venta") }
                     )
                     NavigationBarItem(
                         selected = currentDestination == AppDestination.BALANCE,
@@ -83,6 +96,13 @@ fun AppNavigation(
                 AppDestination.MAP -> {
                     MapScreen(
                         viewModel = mapViewModel,
+                        onOpenAbout = { showAboutScreen = true },
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+                AppDestination.SELLING_POINTS -> {
+                    SellingPointsScreen(
+                        viewModel = sellingPointsViewModel,
                         onOpenAbout = { showAboutScreen = true },
                         modifier = Modifier.padding(innerPadding)
                     )

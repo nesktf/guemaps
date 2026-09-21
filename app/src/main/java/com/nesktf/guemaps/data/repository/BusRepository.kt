@@ -160,4 +160,50 @@ class BusRepository(
     fun isFavoriteLine(lineCode: String): Boolean {
         return database.isFavoriteLine(lineCode)
     }
+
+    suspend fun getSellingPoints(forceNetwork: Boolean = false): Result<List<com.nesktf.guemaps.data.model.SellingPoint>> = withContext(Dispatchers.IO) {
+        val networkResult = apiClient.fetchSellingPoints()
+        if (networkResult.isSuccess) {
+            val rawPoints = networkResult.getOrThrow().puntosVenta ?: emptyList()
+            val sanitizedList = rawPoints.mapNotNull { point ->
+                val coords = com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(point.latitud, point.longitud)
+                if (coords != null) {
+                    point.copy(latitud = coords.first, longitud = coords.second)
+                } else {
+                    null
+                }
+            }
+            if (sanitizedList.isNotEmpty()) {
+                database.saveSellingPoints(sanitizedList)
+                return@withContext Result.success(sanitizedList)
+            }
+        }
+
+        val cached = database.getSellingPoints()
+        if (cached.isNotEmpty()) {
+            return@withContext Result.success(cached)
+        }
+
+        Result.failure(networkResult.exceptionOrNull() ?: Exception("Error al cargar puntos de venta"))
+    }
+
+    suspend fun getTarifas(forceNetwork: Boolean = false): Result<List<com.nesktf.guemaps.data.model.TarifaItem>> = withContext(Dispatchers.IO) {
+        val networkResult = apiClient.fetchConfig()
+        if (networkResult.isSuccess) {
+            val response = networkResult.getOrThrow()
+            val tarifas = response.extractTarifas()
+            if (tarifas.isNotEmpty()) {
+                database.saveTarifas(tarifas)
+                return@withContext Result.success(tarifas)
+            }
+        }
+
+        val cached = database.getCachedTarifas()
+        if (cached != null && cached.isNotEmpty()) {
+            return@withContext Result.success(cached)
+        }
+
+        Result.failure(networkResult.exceptionOrNull() ?: Exception("Error al cargar tarifas"))
+    }
 }
+

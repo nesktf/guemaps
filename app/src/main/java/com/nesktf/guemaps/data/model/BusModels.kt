@@ -1,5 +1,6 @@
 package com.nesktf.guemaps.data.model
 
+import com.google.gson.JsonArray
 import com.google.gson.annotations.SerializedName
 import java.security.MessageDigest
 
@@ -277,5 +278,88 @@ data class BusLiveDetails(
             dist < 1000 -> "a %.0f m".format(java.util.Locale.US, dist)
             else -> "a %.1f km".format(java.util.Locale.US, dist / 1000.0)
         }
+    }
+}
+
+data class SellingPoint(
+    @SerializedName("id") val id: Long = 0,
+    @SerializedName("tipo") val tipo: Int? = null,
+    @SerializedName("nombre") val nombre: String = "",
+    @SerializedName("domicilio") val domicilio: String = "",
+    @SerializedName("detalleDomicilio") val detalleDomicilio: String? = null,
+    @SerializedName("latitud") val latitud: Double? = null,
+    @SerializedName("longitud") val longitud: Double? = null
+) {
+    val isAtm: Boolean get() = tipo == 4
+    val tipoLabel: String
+        get() = when (tipo) {
+            4 -> "Terminal de Autogestión (ATM)"
+            1 -> "Venta y Recarga de Tarjetas"
+            else -> "Punto de Venta y Recarga"
+        }
+}
+
+fun sanitizeSellingPointCoordinates(lat: Double?, lon: Double?): Pair<Double, Double>? {
+    if (lat == null || lon == null) return null
+    var safeLat = -Math.abs(lat)
+    var safeLon = -Math.abs(lon)
+
+    while (Math.abs(safeLat) > 30.0) safeLat /= 10.0
+    while (Math.abs(safeLat) < 20.0 && Math.abs(safeLat) > 0.001) safeLat *= 10.0
+
+    while (Math.abs(safeLon) > 75.0) safeLon /= 10.0
+    while (Math.abs(safeLon) < 55.0 && Math.abs(safeLon) > 0.001) safeLon *= 10.0
+
+    if (safeLat in -26.5..-22.0 && safeLon in -68.5..-62.0) {
+        return Pair(safeLat, safeLon)
+    }
+    return null
+}
+
+data class SellingPointResponse(
+    @SerializedName("error") val error: Int = 0,
+    @SerializedName("version") val version: Long = 0,
+    @SerializedName("sinCambios") val sinCambios: Boolean = false,
+    @SerializedName("puntosVenta") val puntosVenta: List<SellingPoint>? = null
+)
+
+data class TarifaItem(
+    @SerializedName("icon") val icon: String? = null,
+    @SerializedName("key") val key: String = "",
+    @SerializedName("value") val value: String = ""
+)
+
+data class ConfigResponse(
+    @SerializedName("error") val error: Int = 0,
+    @SerializedName("nombre") val nombre: String? = null,
+    @SerializedName("menu") val menu: JsonArray? = null
+) {
+    fun extractTarifas(): List<TarifaItem> {
+        val list = mutableListOf<TarifaItem>()
+        val arr = menu ?: return list
+        for (elem in arr) {
+            if (elem.isJsonObject) {
+                val obj = elem.asJsonObject
+                val tipo = obj.get("tipo")?.asString ?: ""
+                val titulo = obj.get("titulo")?.asString ?: ""
+                if (tipo.equals("tarifas", ignoreCase = true) || titulo.equals("tarifas", ignoreCase = true)) {
+                    val contenido = obj.get("contenidoJSON")
+                    if (contenido != null && contenido.isJsonArray) {
+                        for (item in contenido.asJsonArray) {
+                            if (item.isJsonObject) {
+                                val itemObj = item.asJsonObject
+                                val key = itemObj.get("key")?.asString ?: ""
+                                val value = itemObj.get("value")?.asString ?: ""
+                                val icon = itemObj.get("icon")?.asString
+                                if (key.isNotBlank() && value.isNotBlank()) {
+                                    list.add(TarifaItem(icon = icon, key = key, value = value))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return list
     }
 }

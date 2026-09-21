@@ -323,5 +323,167 @@ class BusModelsTest {
         )
         assertEquals("Chile y Roque Saenz Peña", node.cleanDescripcionParada)
     }
+
+    @Test
+    fun testSanitizeSellingPointCoordinates() {
+        // Normal valid coordinates in Salta
+        val normal = com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(-24.7859, -65.4117)
+        assertNotNull(normal)
+        assertEquals(-24.7859, normal!!.first, 0.0001)
+        assertEquals(-65.4117, normal.second, 0.0001)
+
+        // Missing decimal / multiplied by 10^6
+        val scaled = com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(-24789386.0, -65431254.0)
+        assertNotNull(scaled)
+        assertEquals(-24.789386, scaled!!.first, 0.00001)
+        assertEquals(-65.431254, scaled.second, 0.00001)
+
+        // Positive longitude (needs sign correction)
+        val positiveLon = com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(-24.78, 65.41)
+        assertNotNull(positiveLon)
+        assertEquals(-24.78, positiveLon!!.first, 0.01)
+        assertEquals(-65.41, positiveLon.second, 0.01)
+
+        // Null coordinates
+        assertEquals(null, com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(null, -65.41))
+        assertEquals(null, com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(-24.78, null))
+        assertEquals(null, com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(null, null))
+
+        // Out of province coordinates (Buenos Aires: -34.60, -58.38)
+        assertEquals(null, com.nesktf.guemaps.data.model.sanitizeSellingPointCoordinates(-34.6037, -58.3816))
+    }
+
+    @Test
+    fun testSellingPointResponseDeserialization() {
+        val json = """
+            {
+              "error": 0,
+              "version": 12,
+              "sinCambios": false,
+              "puntosVenta": [
+                {
+                  "id": 101,
+                  "tipo": 4,
+                  "nombre": "Terminal ATM Paseo Salta",
+                  "domicilio": "Av. Paraguay 1450",
+                  "detalleDomicilio": "Hall Central",
+                  "latitud": -24.7912,
+                  "longitud": -65.4215
+                },
+                {
+                  "id": 102,
+                  "tipo": 1,
+                  "nombre": "Kiosco San Martín",
+                  "domicilio": "San Martín 500",
+                  "detalleDomicilio": null,
+                  "latitud": -24789386.0,
+                  "longitud": -65431254.0
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val resp = gson.fromJson(json, com.nesktf.guemaps.data.model.SellingPointResponse::class.java)
+        assertEquals(0, resp.error)
+        assertNotNull(resp.puntosVenta)
+        assertEquals(2, resp.puntosVenta!!.size)
+
+        val atm = resp.puntosVenta!![0]
+        assertEquals(101L, atm.id)
+        assertTrue(atm.isAtm)
+        assertEquals("Terminal de Autogestión (ATM)", atm.tipoLabel)
+
+        val store = resp.puntosVenta!![1]
+        assertEquals(102L, store.id)
+        assertFalse(store.isAtm)
+        assertEquals("Venta y Recarga de Tarjetas", store.tipoLabel)
+    }
+
+    @Test
+    fun testConfigResponseTarifasExtraction() {
+        val json = """
+            {
+              "error": 0,
+              "nombre": "SAETA Salta",
+              "menu": [
+                {
+                  "titulo": "Tarifas",
+                  "icono": "pricetag",
+                  "tipo": "tarifas",
+                  "contenidoJSON": [
+                    {
+                      "icon": "pricetag",
+                      "key": "Boleto Común",
+                      "value": "$1.450,00"
+                    },
+                    {
+                      "icon": "pricetag",
+                      "key": "Abono Social",
+                      "value": "$870,00"
+                    }
+                  ]
+                },
+                {
+                  "titulo": "Otro Menú",
+                  "tipo": "info",
+                  "contenidoJSON": "string simple no array"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val config = gson.fromJson(json, com.nesktf.guemaps.data.model.ConfigResponse::class.java)
+        assertEquals(0, config.error)
+        val tarifas = config.extractTarifas()
+        assertEquals(2, tarifas.size)
+        assertEquals("Boleto Común", tarifas[0].key)
+        assertEquals("$1.450,00", tarifas[0].value)
+        assertEquals("Abono Social", tarifas[1].key)
+        assertEquals("$870,00", tarifas[1].value)
+    }
+
+    @Test
+    fun testSellingPointsDistanceSorting() {
+        val userLat = -24.7859
+        val userLon = -65.4117
+
+        val pointNear = com.nesktf.guemaps.data.model.SellingPoint(
+            id = 1,
+            nombre = "Cerca",
+            latitud = -24.7860,
+            longitud = -65.4120
+        )
+        val pointFar = com.nesktf.guemaps.data.model.SellingPoint(
+            id = 2,
+            nombre = "Lejos",
+            latitud = -24.8500,
+            longitud = -65.4500
+        )
+        val pointNoCoords = com.nesktf.guemaps.data.model.SellingPoint(
+            id = 3,
+            nombre = "Sin Coordenadas",
+            latitud = null,
+            longitud = null
+        )
+
+        val list = listOf(pointFar, pointNoCoords, pointNear)
+
+        val sorted = list.sortedBy { point ->
+            val lat = point.latitud
+            val lon = point.longitud
+            if (lat != null && lon != null) {
+                val dLat = userLat - lat
+                val dLon = userLon - lon
+                dLat * dLat + dLon * dLon
+            } else {
+                Double.MAX_VALUE
+            }
+        }
+
+        assertEquals(1L, sorted[0].id)
+        assertEquals(2L, sorted[1].id)
+        assertEquals(3L, sorted[2].id)
+    }
 }
+
 

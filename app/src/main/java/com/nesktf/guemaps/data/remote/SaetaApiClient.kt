@@ -10,8 +10,10 @@ import com.nesktf.guemaps.data.model.BusRouteResponse
 import com.nesktf.guemaps.data.model.CardBalance
 import com.nesktf.guemaps.data.model.CardBalanceDeserializer
 import com.nesktf.guemaps.data.model.CardBalanceResponse
+import com.nesktf.guemaps.data.model.ConfigResponse
 import com.nesktf.guemaps.data.model.MonederoWrapper
 import com.nesktf.guemaps.data.model.MonederoWrapperDeserializer
+import com.nesktf.guemaps.data.model.SellingPointResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
@@ -194,4 +196,49 @@ class SaetaApiClient(
             Result.failure(e)
         }
     }
+
+    suspend fun fetchSellingPoints(version: Long = 0): Result<SellingPointResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$API_REST_URL/getPuntosVenta/$version")
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(IOException("HTTP error code ${response.code}"))
+            }
+
+            val body = response.body?.string()
+                ?: return@withContext Result.failure(IOException("Empty response body"))
+
+            val result = gson.fromJson(body, SellingPointResponse::class.java)
+            Result.success(result)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchConfig(): Result<ConfigResponse> = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$API_REST_URL/getConfiguracion")
+                .get()
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(IOException("HTTP error code ${response.code}"))
+            }
+
+            val body = response.body?.string()
+                ?: return@withContext Result.failure(IOException("Empty response body"))
+
+            val result = gson.fromJson(body, ConfigResponse::class.java)
+            Result.success(result)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
