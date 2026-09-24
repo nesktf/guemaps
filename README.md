@@ -1,7 +1,7 @@
 # Güemaps
 
 <p align="center">
-  <img src="./img/guemaps_name.png" />
+  <img src="./img/guemaps_name.png" width="400", height="auto"/>
 </p>
 
 Güemaps es una aplicación orientada a la visualización de líneas de transporte urbane e interurbano
