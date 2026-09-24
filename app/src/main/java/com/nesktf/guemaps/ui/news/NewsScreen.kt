@@ -129,7 +129,11 @@ private fun NewsListView(
                 )
             }
             IconButton(onClick = onOpenAbout) {
-                Icon(Icons.Default.Info, contentDescription = stringResource(id = R.string.action_about))
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = stringResource(id = R.string.action_about),
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
 

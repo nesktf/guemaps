@@ -463,6 +463,112 @@ data class BusLiveDetails(
     }
 }
 
+fun calculateDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return 6371000.0 * c
+}
+
+const val DEFAULT_SPEED_BUFFER_SIZE = 16
+const val MIN_BUS_MOVE_METERS = 15.0
+const val STATIONARY_CONFIRMATION_TIMEOUT_MS = 60_000L
+
+data class BusSpeedEvaluation(
+    val instantSpeedKmh: Double?,
+    val averageSpeedKmh: Double?,
+    val sampleAdded: Boolean
+)
+
+class BusSpeedTracker(
+    val bufferSize: Int = DEFAULT_SPEED_BUFFER_SIZE,
+    val minDistanceMeters: Double = MIN_BUS_MOVE_METERS,
+    val stationaryTimeoutMs: Long = STATIONARY_CONFIRMATION_TIMEOUT_MS
+) {
+    data class BusState(
+        var lastRecordedPos: BusPos,
+        var lastRecordedTime: Long,
+        var stationaryTimerStart: Long,
+        val speedSamples: ArrayDeque<Double> = ArrayDeque(16)
+    )
+
+    private val busStates = mutableMapOf<String, BusState>()
+
+    fun getSamples(interno: String): List<Double> {
+        return busStates[interno]?.speedSamples?.toList() ?: emptyList()
+    }
+
+    fun processBusPosition(bus: BusPos, now: Long = System.currentTimeMillis()): BusSpeedEvaluation {
+        val state = busStates[bus.interno]
+        if (state == null) {
+            busStates[bus.interno] = BusState(
+                lastRecordedPos = bus,
+                lastRecordedTime = now,
+                stationaryTimerStart = now
+            )
+            return BusSpeedEvaluation(instantSpeedKmh = null, averageSpeedKmh = null, sampleAdded = false)
+        }
+
+        val distMeters = calculateDistanceMeters(
+            state.lastRecordedPos.latitud, state.lastRecordedPos.longitud,
+            bus.latitud, bus.longitud
+        )
+
+        var instantSpeed: Double? = null
+        var sampleAdded = false
+
+        if (distMeters >= minDistanceMeters) {
+            val dtMillis = now - state.lastRecordedTime
+            if (dtMillis >= 1000L) {
+                val dtHours = dtMillis / (1000.0 * 3600.0)
+                val calculatedSpeed = (distMeters / 1000.0) / dtHours
+                if (calculatedSpeed in 0.0..140.0) {
+                    instantSpeed = calculatedSpeed
+                    state.speedSamples.addLast(calculatedSpeed)
+                    while (state.speedSamples.size > bufferSize) {
+                        state.speedSamples.removeFirst()
+                    }
+                    sampleAdded = true
+                }
+            }
+            state.lastRecordedPos = bus
+            state.lastRecordedTime = now
+            state.stationaryTimerStart = now
+        } else {
+            val elapsedStationary = now - state.stationaryTimerStart
+            if (elapsedStationary >= stationaryTimeoutMs) {
+                instantSpeed = 0.0
+                state.speedSamples.addLast(0.0)
+                while (state.speedSamples.size > bufferSize) {
+                    state.speedSamples.removeFirst()
+                }
+                sampleAdded = true
+                state.stationaryTimerStart = now
+                state.lastRecordedPos = bus
+                state.lastRecordedTime = now
+            }
+        }
+
+        val avgSpeed = if (state.speedSamples.isNotEmpty()) state.speedSamples.average() else null
+        return BusSpeedEvaluation(
+            instantSpeedKmh = instantSpeed ?: state.speedSamples.lastOrNull(),
+            averageSpeedKmh = avgSpeed,
+            sampleAdded = sampleAdded
+        )
+    }
+
+    fun pruneTrackersExcept(activeInternos: Set<String>) {
+        busStates.keys.retainAll(activeInternos)
+    }
+
+    fun clear() {
+        busStates.clear()
+    }
+}
+
 data class SellingPoint(
     @SerializedName("id") val id: Long = 0,
     @SerializedName("tipo") val tipo: Int? = null,

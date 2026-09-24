@@ -661,10 +661,18 @@ fun MapScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(48.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.map_reload_buses)
-                    )
+                    if (state.isLoadingBuses) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.map_reload_buses)
+                        )
+                    }
                 }
             }
         }

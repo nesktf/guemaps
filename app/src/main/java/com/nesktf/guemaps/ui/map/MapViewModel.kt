@@ -105,7 +105,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         const val MAX_SELECTED_LINES = 4
         const val POLLING_INTERVAL_MS = 10_000L // 10 seconds polling interval
-        const val SPEED_BUFFER_SIZE = 8
+        const val SPEED_BUFFER_SIZE = 16
         private const val PREFS_NAME = "guemaps_prefs"
         private const val KEY_LAST_LINE_CODE = "last_line_code"
         private const val KEY_LAST_LINE_DESC = "last_line_desc"
@@ -118,8 +118,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: BusRepository
     private var busPollingJob: Job? = null
     private var locationTimeoutJob: Job? = null
-    private val previousPositions = mutableMapOf<String, Pair<BusPos, Long>>()
-    private val speedHistory = mutableMapOf<String, ArrayDeque<Double>>()
+    private val busSpeedTracker = com.nesktf.guemaps.data.model.BusSpeedTracker(bufferSize = SPEED_BUFFER_SIZE)
     private val locationManager = application.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var locationListener: LocationListener? = null
 
@@ -272,8 +271,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
-        previousPositions.clear()
-        speedHistory.clear()
+        busSpeedTracker.clear()
 
         linesToLoad.forEach { loadRouteForLine(it.codLinea) }
         restartActiveBusesPolling()
@@ -411,8 +409,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             val remainingInternos = allBuses.map { it.interno }.toSet()
             val updatedSelectedBus = state.selectedBusInterno?.takeIf { remainingInternos.contains(it) }
 
-            speedHistory.keys.retainAll(remainingInternos)
-            previousPositions.keys.retainAll(remainingInternos)
+            busSpeedTracker.pruneTrackersExcept(remainingInternos)
 
             // If selected reference stop belonged only to removed line, clear it
             val updatedRefStop = state.selectedReferenceStop?.let { refStop ->
@@ -550,9 +547,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshActiveBuses() {
         if (_uiState.value.selectedLines.isEmpty()) return
-        viewModelScope.launch {
-            fetchActiveBusesForAllLines()
-        }
+        restartActiveBusesPolling()
     }
 
     private suspend fun fetchActiveBusesForAllLines() {
@@ -629,30 +624,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         val detailsMap = mutableMapOf<String, BusLiveDetails>()
 
         buses.forEach { bus ->
-            val prev = previousPositions[bus.interno]
-            var speed: Double? = null
-            if (prev != null) {
-                val dtHours = (now - prev.second) / (1000.0 * 3600.0)
-                if (dtHours in 0.0008..0.05) { // between ~3s and ~3min
-                    val distKm = calculateDistanceMeters(prev.first.latitud, prev.first.longitud, bus.latitud, bus.longitud) / 1000.0
-                    val calculated = distKm / dtHours
-                    if (calculated in 0.0..140.0) {
-                        speed = calculated
-                    }
-                }
-            }
-            if (prev == null || (now - prev.second) >= 3000L) {
-                previousPositions[bus.interno] = Pair(bus, now)
-            }
-
-            val deque = speedHistory.getOrPut(bus.interno) { ArrayDeque(SPEED_BUFFER_SIZE) }
-            if (speed != null) {
-                deque.addLast(speed)
-                while (deque.size > SPEED_BUFFER_SIZE) {
-                    deque.removeFirst()
-                }
-            }
-            val avgSpeed = if (deque.isNotEmpty()) deque.average() else speed
+            val evaluation = busSpeedTracker.processBusPosition(bus, now)
+            val speed = evaluation.instantSpeedKmh
+            val avgSpeed = evaluation.averageSpeedKmh
 
             // 1. Distance between this bus and the reference stop (selected or closest to user)
             var userStopDist: Double? = null
@@ -707,6 +681,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 estimatedArrivalEpochMs = estimatedArrivalEpoch
             )
         }
+        busSpeedTracker.pruneTrackersExcept(buses.map { it.interno }.toSet())
 
         return detailsMap
     }

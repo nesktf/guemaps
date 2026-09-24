@@ -547,24 +547,120 @@ class BusModelsTest {
 
     @Test
     fun testSpeedBufferSlidingWindow() {
-        val buffer = ArrayDeque<Double>(8)
-        val samples = listOf(20.0, 22.0, 24.0, 26.0, 28.0, 30.0, 32.0, 34.0, 40.0)
+        val buffer = ArrayDeque<Double>(16)
+        // Add 18 samples from 10.0 to 27.0
+        val samples = (10..27).map { it.toDouble() }
 
         for (s in samples) {
             buffer.addLast(s)
-            if (buffer.size > 8) {
+            if (buffer.size > 16) {
                 buffer.removeFirst()
             }
         }
 
-        // Buffer size should be capped at 8
-        assertEquals(8, buffer.size)
-        // 20.0 should have been removed; buffer now has 22.0 through 40.0
-        assertEquals(22.0, buffer.first(), 0.001)
-        assertEquals(40.0, buffer.last(), 0.001)
+        // Buffer size should be capped at 16
+        assertEquals(16, buffer.size)
+        // 10.0 and 11.0 should have been removed; buffer now has 12.0 through 27.0
+        assertEquals(12.0, buffer.first(), 0.001)
+        assertEquals(27.0, buffer.last(), 0.001)
 
-        val expectedAvg = (22.0 + 24.0 + 26.0 + 28.0 + 30.0 + 32.0 + 34.0 + 40.0) / 8.0
+        val expectedAvg = (12..27).sum().toDouble() / 16.0
         assertEquals(expectedAvg, buffer.average(), 0.001)
+    }
+
+    @Test
+    fun testBusSpeedTrackerMovingComputesSpeedAndResetsTimer() {
+        val tracker = com.nesktf.guemaps.data.model.BusSpeedTracker(bufferSize = 16)
+        val pos0 = com.nesktf.guemaps.data.model.BusPos(interno = "101", latitud = -24.7850, longitud = -65.4150)
+        val t0 = 1_000_000L
+
+        // Initial position
+        val eval0 = tracker.processBusPosition(pos0, now = t0)
+        assertFalse(eval0.sampleAdded)
+        assertEquals(0, tracker.getSamples("101").size)
+
+        // 10 seconds later: bus moved ~100m (lat moved by 0.0009 deg ~100m >= 15m)
+        val t1 = t0 + 10_000L
+        val pos1 = com.nesktf.guemaps.data.model.BusPos(interno = "101", latitud = -24.7859, longitud = -65.4150)
+        val eval1 = tracker.processBusPosition(pos1, now = t1)
+
+        assertTrue(eval1.sampleAdded)
+        assertNotNull(eval1.instantSpeedKmh)
+        assertTrue(eval1.instantSpeedKmh!! > 30.0) // ~100m in 10s is ~36 km/h
+        assertEquals(1, tracker.getSamples("101").size)
+    }
+
+    @Test
+    fun testBusSpeedTrackerStationaryDiscardsSampleUnder60s() {
+        val tracker = com.nesktf.guemaps.data.model.BusSpeedTracker(bufferSize = 16)
+        val pos0 = com.nesktf.guemaps.data.model.BusPos(interno = "101", latitud = -24.7850, longitud = -65.4150)
+        val t0 = 1_000_000L
+
+        tracker.processBusPosition(pos0, now = t0)
+
+        // At 10s: exactly same position (0 meters moved < 15m, 10s elapsed < 60s)
+        val eval10 = tracker.processBusPosition(pos0, now = t0 + 10_000L)
+        assertFalse(eval10.sampleAdded)
+        assertEquals(0, tracker.getSamples("101").size)
+
+        // At 30s: moved 5 meters due to GPS inaccuracy (< 15m, 30s elapsed < 60s)
+        val posJitter = com.nesktf.guemaps.data.model.BusPos(interno = "101", latitud = -24.78504, longitud = -65.4150)
+        val eval30 = tracker.processBusPosition(posJitter, now = t0 + 30_000L)
+        assertFalse(eval30.sampleAdded)
+        assertEquals(0, tracker.getSamples("101").size)
+
+        // At 59s: still under 60 seconds -> discard
+        val eval59 = tracker.processBusPosition(pos0, now = t0 + 59_000L)
+        assertFalse(eval59.sampleAdded)
+        assertEquals(0, tracker.getSamples("101").size)
+    }
+
+    @Test
+    fun testBusSpeedTrackerStationarySamplesZeroAfter60s() {
+        val tracker = com.nesktf.guemaps.data.model.BusSpeedTracker(bufferSize = 16)
+        val pos0 = com.nesktf.guemaps.data.model.BusPos(interno = "101", latitud = -24.7850, longitud = -65.4150)
+        val t0 = 1_000_000L
+
+        tracker.processBusPosition(pos0, now = t0)
+
+        // At 60s: bus hasn't moved and >= 60 seconds have elapsed
+        val eval60 = tracker.processBusPosition(pos0, now = t0 + 60_000L)
+        assertTrue(eval60.sampleAdded)
+        assertEquals(0.0, eval60.instantSpeedKmh!!, 0.001)
+        assertEquals(0.0, eval60.averageSpeedKmh!!, 0.001)
+        assertEquals(listOf(0.0), tracker.getSamples("101"))
+
+        // At 70s: timer was reset at 60s, so elapsed is 10s < 60s -> discard
+        val eval70 = tracker.processBusPosition(pos0, now = t0 + 70_000L)
+        assertFalse(eval70.sampleAdded)
+        assertEquals(listOf(0.0), tracker.getSamples("101"))
+
+        // At 120s: 60s have passed since timer reset at 60s -> sample 0.0 again
+        val eval120 = tracker.processBusPosition(pos0, now = t0 + 120_000L)
+        assertTrue(eval120.sampleAdded)
+        assertEquals(listOf(0.0, 0.0), tracker.getSamples("101"))
+    }
+
+    @Test
+    fun testBusSpeedTrackerResumesMovingAfterStationary() {
+        val tracker = com.nesktf.guemaps.data.model.BusSpeedTracker(bufferSize = 16)
+        val pos0 = com.nesktf.guemaps.data.model.BusPos(interno = "101", latitud = -24.7850, longitud = -65.4150)
+        val t0 = 1_000_000L
+
+        tracker.processBusPosition(pos0, now = t0)
+        // Confirmed stopped at 60s
+        tracker.processBusPosition(pos0, now = t0 + 60_000L)
+        assertEquals(listOf(0.0), tracker.getSamples("101"))
+
+        // At 70s (10s later), bus drives ~100m (latitud changed by 0.0009)
+        val pos1 = com.nesktf.guemaps.data.model.BusPos(interno = "101", latitud = -24.7859, longitud = -65.4150)
+        val evalMoving = tracker.processBusPosition(pos1, now = t0 + 70_000L)
+
+        assertTrue(evalMoving.sampleAdded)
+        assertTrue(evalMoving.instantSpeedKmh!! > 30.0)
+        assertEquals(2, tracker.getSamples("101").size)
+        assertEquals(0.0, tracker.getSamples("101")[0], 0.001)
+        assertTrue(tracker.getSamples("101")[1] > 30.0)
     }
 
     @Test
