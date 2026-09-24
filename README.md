@@ -4,7 +4,7 @@
   <img src="./img/guemaps_name.png" width="400", height="auto"/>
 </p>
 
-Güemaps es una aplicación orientada a la visualización de líneas de transporte urbane e interurbano
+Güemaps es una aplicación orientada a la visualización de líneas de transporte urbano e interurbano
 en Salta que busca brindar una mejor experiencia de usuario que las alternativas oficiales.
 
 Con esta aplicación, puedes:
