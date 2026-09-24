@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 640" width="100%" height="100%">
+  <defs>
+    <linearGradient id="screenBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181e3a" />
+      <stop offset="100%" stop-color="#0f1322" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a3eb1" />
+      <stop offset="100%" stop-color="#1e299b" />
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- Frame Background -->
+  <rect width="360" height="640" rx="32" fill="url(#screenBg)"/>
+  
+  <!-- Subtle Map Grid -->
+  <rect width="360" height="640" rx="32" fill="url(#grid)" />
+
+  <!-- Status Bar Mockup -->
+  <rect x="24" y="16" width="48" height="10" rx="5" fill="rgba(255,255,255,0.2)"/>
+  <rect x="290" y="16" width="46" height="10" rx="5" fill="rgba(255,255,255,0.2)"/>
+
+  <!-- Top App Bar -->
+  <rect x="18" y="44" width="324" height="48" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+  <circle cx="44" cy="68" r="10" fill="url(#accentGrad)" />
+  <rect x="64" y="62" width="110" height="12" rx="6" fill="rgba(255,255,255,0.6)"/>
+
+  <!-- Route Line Simulation -->
+  <path d="M 60 520 C 120 400, 80 280, 180 240 S 300 160, 280 110" fill="none" stroke="#3d5afe" stroke-width="6" stroke-linecap="round" stroke-dasharray="10 6" opacity="0.6"/>
+  <path d="M 60 520 C 120 400, 80 280, 180 240 S 300 160, 280 110" fill="none" stroke="#536dfe" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Bus Pin Marker -->
+  <circle cx="180" cy="240" r="18" fill="#1e299b" stroke="#ffffff" stroke-width="2.5"/>
+  <text x="180" y="246" font-family="'Cousine', monospace, sans-serif" font-size="14" fill="#ffffff" font-weight="bold" text-anchor="middle">🚍</text>
+
+  <!-- Bus Stop Marker -->
+  <circle cx="280" cy="110" r="12" fill="#e53935" stroke="#ffffff" stroke-width="2"/>
+  <circle cx="60" cy="520" r="12" fill="#43a047" stroke="#ffffff" stroke-width="2"/>
+
+  <!-- Floating Info Card -->
+  <g transform="translate(24, 460)">
+    <rect width="312" height="136" rx="20" fill="rgba(24, 30, 58, 0.9)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+    
+    <rect x="20" y="22" width="56" height="24" rx="8" fill="url(#accentGrad)"/>
+    <text x="48" y="38" font-family="'Cousine', monospace, sans-serif" font-size="12" fill="#ffffff" font-weight="bold" text-anchor="middle">5B</text>
+
+    <rect x="90" y="22" width="130" height="12" rx="6" fill="rgba(255,255,255,0.85)"/>
+    <rect x="90" y="40" width="90" height="9" rx="4" fill="rgba(255,255,255,0.4)"/>
+
+    <line x1="20" y1="68" x2="292" y2="68" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+
+    <text x="20" y="96" font-family="'Cousine', monospace, sans-serif" font-size="12" fill="rgba(255,255,255,0.6)">Próximo arribo:</text>
+    <text x="20" y="118" font-family="'Cousine', monospace, sans-serif" font-size="16" fill="#4caf50" font-weight="bold">~ 4 min (1.2 km)</text>
+
+    <rect x="220" y="86" width="72" height="34" rx="10" fill="rgba(255,255,255,0.08)"/>
+    <text x="256" y="107" font-family="'Cousine', monospace, sans-serif" font-size="11" fill="#90caf9" font-weight="bold" text-anchor="middle">SEGUIR</text>
+  </g>
+
+  <!-- Center Watermark Label -->
+  <g transform="translate(180, 360)">
+    <rect x="-115" y="-18" width="230" height="36" rx="18" fill="rgba(0,0,0,0.55)" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+    <text x="0" y="5" font-family="'Cousine', monospace, sans-serif" font-size="12" fill="rgba(255,255,255,0.8)" text-anchor="middle">Captura de Pantalla</text>
+  </g>
+</svg>
