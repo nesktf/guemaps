@@ -751,6 +751,18 @@ class BusModelsTest {
         )
         assertEquals("Calculando tiempo...", calculating.formatEstimatedArrivalSummary())
     }
+
+    @Test
+    fun testMaxSelectedLinesAndPaletteColors() {
+        assertEquals(5, com.nesktf.guemaps.ui.map.MapViewModel.MAX_SELECTED_LINES)
+        val palette = com.nesktf.guemaps.ui.map.BUS_LINE_PALETTE.take(com.nesktf.guemaps.ui.map.MapViewModel.MAX_SELECTED_LINES)
+        assertEquals(5, palette.size)
+        assertEquals("#35399D", palette[0])
+        assertEquals("#724829", palette[1])
+        assertEquals("#70B91A", palette[2])
+        assertEquals("#BE45B4", palette[3])
+        assertEquals("#F17614", palette[4])
+    }
 }
 
 

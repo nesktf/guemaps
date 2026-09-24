@@ -41,6 +41,8 @@ import com.nesktf.guemaps.ui.map.MapScreen
 import com.nesktf.guemaps.ui.map.MapViewModel
 import com.nesktf.guemaps.ui.news.NewsScreen
 import com.nesktf.guemaps.ui.news.NewsViewModel
+import com.nesktf.guemaps.ui.notice.NoticeDialog
+import com.nesktf.guemaps.ui.notice.NoticePreferences
 import com.nesktf.guemaps.ui.sellingpoints.SellingPointsScreen
 import com.nesktf.guemaps.ui.sellingpoints.SellingPointsViewModel
 import com.nesktf.guemaps.ui.splash.SplashScreen
@@ -91,6 +93,7 @@ fun AppNavigation(
 private fun MainAppContent(
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     // Shared or scoped ViewModels initialized when main content is displayed
     val mapViewModel: MapViewModel = viewModel()
     val sellingPointsViewModel: SellingPointsViewModel = viewModel()
@@ -101,6 +104,9 @@ private fun MainAppContent(
 
     var currentDestination by rememberSaveable { mutableStateOf(AppDestination.MAP) }
     var showAboutScreen by rememberSaveable { mutableStateOf(false) }
+    var showNoticeDialog by rememberSaveable {
+        mutableStateOf(!NoticePreferences.isNoticeDisabled(context))
+    }
 
     if (showAboutScreen) {
         AboutScreen(onBack = { showAboutScreen = false })
@@ -205,6 +211,17 @@ private fun MainAppContent(
                         }
                     }
                 }
-            }
         }
+
+        if (showNoticeDialog) {
+            NoticeDialog(
+                onDismiss = { dontShowAgain ->
+                    if (dontShowAgain) {
+                        NoticePreferences.setNoticeDisabled(context, true)
+                    }
+                    showNoticeDialog = false
+                }
+            )
+        }
+    }
 

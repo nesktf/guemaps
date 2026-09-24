@@ -246,7 +246,7 @@ fun MapScreen(
                                 text = if (state.selectedLines.isEmpty()) {
                                     stringResource(R.string.map_select_lines)
                                 } else {
-                                    stringResource(R.string.map_active_lines_title, state.selectedLines.size, 4)
+                                    stringResource(R.string.map_active_lines_title, state.selectedLines.size, MapViewModel.MAX_SELECTED_LINES)
                                 },
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
@@ -815,14 +815,14 @@ fun MapScreen(
                             modifier = Modifier.weight(1f)
                         )
                         Surface(
-                            color = if (state.selectedLines.size >= 4) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                            color = if (state.selectedLines.size >= MapViewModel.MAX_SELECTED_LINES) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
                                 text = stringResource(R.string.line_picker_selected_count, state.selectedLines.size),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (state.selectedLines.size >= 4) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                                color = if (state.selectedLines.size >= MapViewModel.MAX_SELECTED_LINES) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }

@@ -36,21 +36,48 @@
 
     <!-- About Screen -->
     <string name="about_title">Acerca de</string>
-    <string name="about_version">Versión 1.0 (Build 2026)</string>
-    <string name="about_banner_placeholder">[ Imagen / Banner Placeholder ]</string>
-    <string name="about_banner_description">Placeholder de imagen</string>
-    <string name="about_project_desc_title">Descripción del Proyecto</string>
-    <string name="about_project_desc_text">Güemaps es una aplicación orientada a la visualización de líneas de transporte urbano e interurbano en Salta, Argentina, y a la consulta de saldo de tarjetas de transporte mediante OpenStreetMap.</string>
-    <string name="about_project_notes">[Texto placeholder: Aquí puedes completar manualmente más información acerca del desarrollo, características, tecnologías utilizadas, contacto y notas adicionales.]</string>
+    <string name="about_version">BETA 0.13.0 (2026)</string>
+    <string name="about_github_repo_url">https://github.com/nesktf/guemaps</string>
+    <string name="about_github_repo_label">https://github.com/nesktf/guemaps</string>
+    <string name="about_project_desc_title">Descripción</string>
+    <string name="about_project_desc_text">Güemaps es una aplicación orientada a la visualización de líneas de transporte urbano e interurbano en Salta que busca brindar una mejor experiencia de usuario que las alternativas oficiales.</string>
+    <string name="about_links_title">Enlaces</string>
+    <string name="about_link_github_user_title">Mis repositorios de GitHub</string>
+    <string name="about_link_github_user_desc">Revisa otros proyectos míos</string>
+    <string name="about_link_github_user_url">https://github.com/nesktf</string>
+    <string name="about_link_artist_title">Página de la artista del ícono</string>
+    <string name="about_link_artist_desc">Ve a ver los dibujos bonitos que hace!</string>
+    <string name="about_link_artist_url">https://www.instagram.com/luxxyxarts</string>
+    <string name="about_link_mail_title">Mi correo</string>
+    <string name="about_link_mail_desc">Envíame un correo si tienes dudas o alguna recomendación</string>
+    <string name="about_link_mail_url">mailto:nesktf@proton.me</string>
+    <string name="about_link_website_title">Sitio Web</string>
+    <string name="about_link_website_desc">Página web oficial del proyecto</string>
+    <string name="about_link_website_url">https://guemaps.placeholder.com</string>
+    <string name="about_link_api_tos_title">Términos de la API de MiRedBus</string>
+    <string name="about_link_api_tos_desc">Términos y condiciones de uso para los servicios de MiRedBus</string>
+    <string name="about_link_api_tos_url">https://salta.miredbus.com.ar/documentos/salta_terminosycondiciones.html</string>
+    <string name="about_donations_title">Donaciones</string>
+    <string name="about_donations_desc">Si encontraste útil esta aplicación y quieres colaborar conmigo, puedes invitarme un café!\nEl dinero será reinvertido en mantener la aplicación y brindar mas funciones a los usuarios.</string>
+    <string name="about_bmac_title">Invítame un café</string>
+    <string name="about_bmac_desc">El café es rico y ayuda bastante para programar durante horas!</string>
+    <string name="about_bmac_url">https://buymeacoffee.com/nesktf</string>
     <string name="about_credits_title">Créditos y Licencias</string>
-    <string name="about_credits_text">• Mapas y capas base: OpenStreetMap (OSM) y OpenStreetMap contributors.\n• Biblioteca de mapas: osmdroid.\n• Datos de transporte y saldo: SAETA / MiRedBus.\n• Licencia: [Espacio para especificar licencia o términos].</string>
+    <string name="about_credits_text">• Mapas y capas base: OpenStreetMap (OSM) y OpenStreetMap contributors.\n• Biblioteca de mapas: osmdroid.\n• Fuente de los datos: SAETA / MiRedBus.\n• Licencia: GNU GPLv3.\n• Compañera de debugging: Mi fumo de Marisa ᗜ‿ᗜ</string>
+    <string name="about_easter_egg_title">Fumo ᗜ‿ᗜ</string>
+    <string name="about_easter_egg_desc">Debugging partner!</string>
+
+    <!-- Startup Notice Dialog -->
+    <string name="notice_dialog_title">Aviso</string>
+    <string name="notice_dialog_content">Esta aplicación utiliza datos provenientes de los servidores de SAETA/MiRedBus. Al utilizar esta app, usted acepta sus términos y condiciones de uso.\n\nPor favor, tenga en cuenta que la información mostrada puede no ser 100% precisa y sólo debería ser utilizada como una estimación de la realidad.</string>
+    <string name="notice_dialog_dont_show_again">No volver a mostrar</string>
 
     <!-- Map Screen & Controls -->
     <string name="map_search_placeholder">Buscar líneas o paradas…</string>
     <string name="map_offline_mode">Modo sin conexión: visualizando datos guardados</string>
     <string name="map_select_lines">Seleccionar Líneas</string>
     <string name="map_active_lines_title">Líneas Activas (%1$d/%2$d)</string>
-    <string name="map_touch_to_add_lines">Toque aquí para agregar hasta 4 colectivos</string>
+    <string name="map_touch_to_add_lines">Toque aquí para agregar hasta 5 colectivos</string>
     <string name="map_clear_all_lines">Limpiar todas las líneas</string>
     <string name="map_add_line">Agregar línea</string>
     <string name="map_remove_line">Quitar línea</string>
@@ -86,16 +113,16 @@
 
     <!-- Line Picker Bottom Sheet -->
     <string name="line_picker_title">Seleccionar Líneas</string>
-    <string name="line_picker_selected_count">%1$d/4 seleccionadas</string>
+    <string name="line_picker_selected_count">%1$d/5 seleccionadas</string>
     <string name="line_picker_tab_active">Activas (%1$d)</string>
     <string name="line_picker_tab_presets">Ajustes (%1$d)</string>
     <string name="line_picker_tab_all">Todos</string>
     <string name="line_picker_save_preset">Guardar ajuste</string>
     <string name="line_picker_empty_search">No se encontraron líneas o paradas para \"%1$s\"</string>
     <string name="line_picker_empty_active_title">No hay líneas activas seleccionadas</string>
-    <string name="line_picker_empty_active_desc">Seleccioná hasta 4 líneas para ver sus recorridos y colectivos en el mapa.</string>
+    <string name="line_picker_empty_active_desc">Seleccioná hasta 5 líneas para ver sus recorridos y colectivos en el mapa.</string>
     <string name="line_picker_empty_presets_title">No tenés ajustes guardados</string>
-    <string name="line_picker_empty_presets_desc">Guardá combinaciones frecuentes de hasta 4 líneas para cargarlas rápidamente con un solo toque.</string>
+    <string name="line_picker_empty_presets_desc">Guardá combinaciones frecuentes de hasta 5 líneas para cargarlas rápidamente con un solo toque.</string>
     <string name="line_picker_load_preset">Cargar</string>
     <string name="line_picker_preset_loaded">Ajuste \"%1$s\" cargado</string>
     <string name="line_picker_preset_saved">Ajuste \"%1$s\" guardado</string>
@@ -148,7 +175,7 @@
     <string name="balance_captcha_code_label">Código de la imagen</string>
     <string name="balance_captcha_desc">Captcha</string>
     <string name="balance_warning_title">Atención</string>
-    <string name="balance_warning_text">Si usted ha realizado una recarga últimamente, por favor asegurese de haberla utilizado en un colectivo de la línea antes de realizar una consulta. Los datos pueden tardar unas cuantas horas en refrescarse una vez utilizada la tarjeta, asegurese de revisar la fecha de última actualización.</string>
+    <string name="balance_warning_text">Si usted ha realizado una recarga últimamente, por favor asegurese de haber utilizado su tarjeta en un colectivo antes de realizar una consulta.\nLos datos pueden tardar unas cuantas horas en refrescarse una vez utilizada la tarjeta, asegurese de revisar la fecha de última actualización.</string>
     <string name="balance_check_button">Consultar Saldo</string>
     <string name="balance_tarifas_title">Tarifas</string>
     <string name="balance_tarifas_loading">Cargando tarifas vigentes…</string>

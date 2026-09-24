@@ -103,7 +103,7 @@ data class MapUiState(
 class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
-        const val MAX_SELECTED_LINES = 4
+        const val MAX_SELECTED_LINES = 5
         const val POLLING_INTERVAL_MS = 10_000L // 10 seconds polling interval
         const val SPEED_BUFFER_SIZE = 16
         private const val PREFS_NAME = "guemaps_prefs"
