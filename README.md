@@ -40,4 +40,4 @@ completamente y puedas explicar lo que haz hecho al realizar la pull request**.
 Si encontraste útil esta aplicación y quieres colaborar conmigo, puedes invitarme un café! El
 dinero será reinvertido en mantener la aplicación y brindar mas funciones a los usuarios.
 
-[![BuyMeACoffee](./img/bmc-yellow.svg)](https://buymeacoffee.com/pacha)
+[![BuyMeACoffee](./img/bmc-yellow.svg)](https://buymeacoffee.com/nesktf)
