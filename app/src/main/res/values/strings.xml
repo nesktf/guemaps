@@ -36,7 +36,7 @@
 
     <!-- About Screen -->
     <string name="about_title">Acerca de</string>
-    <string name="about_version">BETA 0.13.0 (2026)</string>
+    <string name="about_version">BETA 0.13.1 (2026)</string>
     <string name="about_github_repo_url">https://github.com/nesktf/guemaps</string>
     <string name="about_github_repo_label">https://github.com/nesktf/guemaps</string>
     <string name="about_project_desc_title">Descripción</string>
