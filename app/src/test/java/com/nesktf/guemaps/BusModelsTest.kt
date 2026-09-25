@@ -763,6 +763,42 @@ class BusModelsTest {
         assertEquals("#BE45B4", palette[3])
         assertEquals("#F17614", palette[4])
     }
+
+    @Test
+    fun testBusArrivalTimeOffsetConstant() {
+        assertEquals(120L, com.nesktf.guemaps.ui.map.MapViewModel.BUS_ARRIVAL_TIME_OFFSET_SECONDS)
+    }
+
+    @Test
+    fun testBusStopRouteMatching() {
+        val stop = com.nesktf.guemaps.data.model.MapBusStop(
+            id = "stop_1",
+            latitude = -24.789,
+            longitude = -65.412,
+            name = "San Martín y Alberdi",
+            code = "P101",
+            lineCodes = listOf("100", "101"),
+            lineNames = listOf("1A", "1B")
+        )
+
+        // Line 100 serves this stop
+        assertTrue(stop.lineCodes.contains("100"))
+        // Line 105 does not serve this stop
+        assertFalse(stop.lineCodes.contains("105"))
+    }
+
+    @Test
+    fun testOfflineModeStateLogic() {
+        val uiStateDefault = com.nesktf.guemaps.ui.map.MapUiState()
+        assertFalse(uiStateDefault.isGroupsOffline)
+        assertFalse(uiStateDefault.isRouteOffline)
+
+        val uiStateGroupsOffline = uiStateDefault.copy(isGroupsOffline = true)
+        assertTrue(uiStateGroupsOffline.isGroupsOffline)
+
+        val uiStateRouteOffline = uiStateDefault.copy(isRouteOffline = true)
+        assertTrue(uiStateRouteOffline.isRouteOffline)
+    }
 }
 
 

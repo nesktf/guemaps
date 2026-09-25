@@ -78,10 +78,14 @@ import androidx.compose.material3.TextButton
 import android.widget.Toast
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -154,7 +158,38 @@ fun MapScreen(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.requestUserLocation()
+        val fineGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseGranted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (fineGranted || coarseGranted) {
+            viewModel.requestUserLocation()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (viewModel.isLocationPermissionGranted() && viewModel.isLocationProviderEnabled()) {
+                    viewModel.requestUserLocation()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     var showSavePresetDialog by remember { mutableStateOf(false) }
@@ -623,8 +658,16 @@ fun MapScreen(
                     ) == PackageManager.PERMISSION_GRANTED
 
                     if (fineGranted || coarseGranted) {
-                        viewModel.requestUserLocation { loc ->
-                            mapActions.animateToLocation(loc.latitude, loc.longitude, 17.0)
+                        if (!viewModel.isLocationProviderEnabled()) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.map_location_disabled),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            viewModel.requestUserLocation { loc ->
+                                mapActions.animateToLocation(loc.latitude, loc.longitude, 17.0)
+                            }
                         }
                     } else {
                         locationPermissionLauncher.launch(

@@ -7,10 +7,16 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Looper
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nesktf.guemaps.R
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.model.ActiveLineData
 import com.nesktf.guemaps.data.model.BusCategory
@@ -112,6 +118,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_LAST_LINE_PATH = "last_line_path"
         private const val KEY_SELECTED_LINES_JSON = "selected_lines_json"
         private const val KEY_PRESETS_JSON = "bus_presets_json"
+
+        /**
+         * Additional offset added to calculated bus arrival time in seconds (e.g. 120s = 2 minutes)
+         * to compensate for real-world traffic, passenger boarding, and API delays.
+         * Tweak this value as needed.
+         */
+        const val BUS_ARRIVAL_TIME_OFFSET_SECONDS = 120L
     }
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -121,6 +134,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val busSpeedTracker = com.nesktf.guemaps.data.model.BusSpeedTracker(bufferSize = SPEED_BUFFER_SIZE)
     private val locationManager = application.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var locationListener: LocationListener? = null
+    private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var reconnectionJob: Job? = null
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
@@ -129,6 +145,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         val database = GuemapsDatabase(application)
         val apiClient = SaetaApiClient()
         repository = BusRepository(apiClient, database)
+
+        // Setup network connectivity callback for offline/online handling
+        setupNetworkCallback()
 
         // Load presets
         loadPresets()
@@ -532,13 +551,135 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun isNetworkAvailable(): Boolean {
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val caps = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    fun isOfflineMode(): Boolean {
+        return _uiState.value.isGroupsOffline || _uiState.value.isRouteOffline || !isNetworkAvailable()
+    }
+
+    private fun setupNetworkCallback() {
+        try {
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    if (isOfflineMode()) {
+                        viewModelScope.launch {
+                            attemptReconnection(isManual = false)
+                        }
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    busPollingJob?.cancel()
+                    _uiState.update { it.copy(isLoadingBuses = false) }
+                }
+            }
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivityManager.registerNetworkCallback(request, callback)
+            networkCallback = callback
+        } catch (_: Exception) {}
+    }
+
+    suspend fun attemptReconnection(isManual: Boolean) {
+        if (reconnectionJob?.isActive == true) return
+        val job = viewModelScope.launch {
+            if (!isNetworkAvailable()) {
+                if (isManual) {
+                    val msg = getApplication<Application>().getString(R.string.map_no_active_network)
+                    showFeedbackMessage(msg)
+                    showStopToast(msg)
+                }
+                return@launch
+            }
+
+            _uiState.update { it.copy(isLoadingBuses = true) }
+
+            val groupsResult = runCatching { repository.getBusGroups(forceNetwork = true) }.getOrNull()
+            val groupsSuccess = groupsResult != null && groupsResult.isSuccess && !groupsResult.getOrThrow().isFromCache
+
+            if (!groupsSuccess) {
+                _uiState.update { it.copy(isLoadingBuses = false) }
+                if (isManual) {
+                    val msg = getApplication<Application>().getString(R.string.map_no_active_network)
+                    showFeedbackMessage(msg)
+                    showStopToast(msg)
+                }
+                return@launch
+            }
+
+            val gRes = groupsResult.getOrThrow()
+            val cats = gRes.rootGroup.extractCategories()
+
+            _uiState.update { state ->
+                val filtered = filterLines(gRes.flatLines, state.searchQuery)
+                state.copy(
+                    busGroups = gRes.rootGroup,
+                    categories = cats,
+                    flatLines = gRes.flatLines,
+                    filteredLines = filtered,
+                    isGroupsOffline = false
+                )
+            }
+
+            // Re-fetch routes for currently selected active lines with forceNetwork = true
+            val currentLines = _uiState.value.selectedLines
+            for (line in currentLines) {
+                val routeRes = runCatching { repository.getBusRoute(line.codLinea, forceNetwork = true) }.getOrNull()
+                if (routeRes != null && routeRes.isSuccess && !routeRes.getOrThrow().isFromCache) {
+                    val nodes = routeRes.getOrThrow().nodes
+                    _uiState.update { state ->
+                        val lineData = state.activeLines[line.codLinea]
+                        if (lineData != null) {
+                            val updated = lineData.copy(routeNodes = nodes, isRouteOffline = false)
+                            state.copy(activeLines = state.activeLines + (line.codLinea to updated))
+                        } else state
+                    }
+                }
+            }
+
+            _uiState.update { state ->
+                val allNodes = state.activeLines.values.flatMap { it.routeNodes }
+                val anyRouteOffline = state.activeLines.values.any { it.isRouteOffline }
+                state.copy(
+                    routeNodes = if (allNodes.isNotEmpty()) allNodes else state.routeNodes,
+                    isRouteOffline = anyRouteOffline,
+                    isLoadingBuses = false
+                )
+            }
+
+            val netFoundMsg = getApplication<Application>().getString(R.string.map_network_found)
+            showFeedbackMessage(netFoundMsg)
+            showStopToast(netFoundMsg)
+
+            // Re-enter online mode: restart active buses polling and immediately fetch active buses
+            restartActiveBusesPolling()
+            fetchActiveBusesForAllLines()
+        }
+        reconnectionJob = job
+        job.join()
+    }
+
     private fun restartActiveBusesPolling() {
         busPollingJob?.cancel()
         val lines = _uiState.value.selectedLines
         if (lines.isEmpty()) return
 
+        if (isOfflineMode()) {
+            _uiState.update { it.copy(isLoadingBuses = false) }
+            return
+        }
+
         busPollingJob = viewModelScope.launch {
             while (isActive) {
+                if (isOfflineMode()) {
+                    _uiState.update { it.copy(isLoadingBuses = false) }
+                    break
+                }
                 fetchActiveBusesForAllLines()
                 delay(10_000) // Poll every 10 seconds
             }
@@ -547,7 +688,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshActiveBuses() {
         if (_uiState.value.selectedLines.isEmpty()) return
-        restartActiveBusesPolling()
+        if (isOfflineMode()) {
+            viewModelScope.launch {
+                attemptReconnection(isManual = true)
+            }
+        } else {
+            restartActiveBusesPolling()
+        }
     }
 
     private suspend fun fetchActiveBusesForAllLines() {
@@ -662,9 +809,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     val effectiveSpeed = avgSpeed ?: speed
                     if (effectiveSpeed != null && effectiveSpeed >= 1.0) {
                         val speedMps = effectiveSpeed / 3.6
-                        val secs = Math.round(userStopDist / speedMps)
-                        estimatedSeconds = secs
-                        estimatedArrivalEpoch = now + (secs * 1000L)
+                        val rawSecs = Math.round(userStopDist / speedMps)
+                        val totalSecs = rawSecs + BUS_ARRIVAL_TIME_OFFSET_SECONDS
+                        estimatedSeconds = totalSecs
+                        estimatedArrivalEpoch = now + (totalSecs * 1000L)
                     }
                 }
             }
@@ -735,15 +883,29 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun requestUserLocation(onLocationReady: ((Location) -> Unit)? = null) {
+    fun isLocationPermissionGranted(): Boolean {
         val hasFine = ContextCompat.checkSelfPermission(
             getApplication(), Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
         val hasCoarse = ContextCompat.checkSelfPermission(
             getApplication(), Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
+        return hasFine || hasCoarse
+    }
 
-        if (!hasFine && !hasCoarse) return
+    fun isLocationProviderEnabled(): Boolean {
+        return try {
+            LocationManagerCompat.isLocationEnabled(locationManager)
+        } catch (_: Exception) {
+            val enabledProviders = try { locationManager.getProviders(true) } catch (_: Exception) { emptyList() }
+            enabledProviders.isNotEmpty()
+        }
+    }
+
+    fun requestUserLocation(onLocationReady: ((Location) -> Unit)? = null) {
+        if (!isLocationPermissionGranted() || !isLocationProviderEnabled()) {
+            return
+        }
 
         _uiState.update { it.copy(isLocatingUser = true) }
 
@@ -797,10 +959,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             } catch (_: SecurityException) {}
         }
 
-        // Poll user location for at least 5 minutes before giving up (300,000 ms)
+        // Poll user location with a 30-second timeout before giving up
         locationTimeoutJob?.cancel()
         locationTimeoutJob = viewModelScope.launch {
-            delay(300_000L)
+            delay(30_000L)
             stopLocationUpdates()
         }
     }
@@ -829,7 +991,29 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         recalculateBusLiveDetails()
     }
 
+    fun isBusServingStop(interno: String, stop: MapBusStop): Boolean {
+        val lineData = _uiState.value.activeLines.values.find { ld ->
+            ld.activeBuses.any { it.interno == interno }
+        } ?: return false
+
+        if (stop.lineCodes.contains(lineData.line.codLinea)) return true
+
+        return lineData.routeNodes.any { node ->
+            node.parada && (
+                (node.codigoParada != null && stop.code != null && node.codigoParada.equals(stop.code, ignoreCase = true)) ||
+                calculateDistanceMeters(node.latitud, node.longitud, stop.latitude, stop.longitude) <= 25.0
+            )
+        }
+    }
+
     fun selectBusForFloatingCard(interno: String) {
+        val currentStop = _uiState.value.selectedReferenceStop
+        if (currentStop != null && _uiState.value.selectedBusInterno != interno) {
+            if (!isBusServingStop(interno, currentStop)) {
+                showStopToast(getApplication<Application>().getString(R.string.map_bus_does_not_pass_stop))
+                return
+            }
+        }
         _uiState.update { state ->
             val newSelection = if (state.selectedBusInterno == interno) null else interno
             state.copy(selectedBusInterno = newSelection)
@@ -841,7 +1025,23 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectReferenceStop(stop: MapBusStop?) {
-        _uiState.update { it.copy(selectedReferenceStop = stop) }
+        var shouldDeselectBus = false
+        val currentBus = _uiState.value.selectedBusInterno
+        if (stop != null && currentBus != null) {
+            if (!isBusServingStop(currentBus, stop)) {
+                shouldDeselectBus = true
+            }
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                selectedReferenceStop = stop,
+                selectedBusInterno = if (shouldDeselectBus) null else state.selectedBusInterno
+            )
+        }
+        if (shouldDeselectBus) {
+            showStopToast(getApplication<Application>().getString(R.string.map_bus_does_not_pass_stop))
+        }
         recalculateBusLiveDetails()
     }
 
@@ -926,6 +1126,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         return AddStopResult.Added(line)
     }
 
+    fun showFeedbackMessage(message: String) {
+        _uiState.update { it.copy(feedbackMessage = message) }
+    }
+
     fun clearFeedbackMessage() {
         _uiState.update { it.copy(feedbackMessage = null) }
     }
@@ -999,6 +1203,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         locationTimeoutJob?.cancel()
         syncJob?.cancel()
         stopToastJob?.cancel()
+        reconnectionJob?.cancel()
+        networkCallback?.let {
+            try { connectivityManager.unregisterNetworkCallback(it) } catch (_: Exception) {}
+            networkCallback = null
+        }
         stopLocationUpdates()
     }
 }

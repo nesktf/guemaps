@@ -92,6 +92,10 @@
     <string name="map_with_ramp_suffix"> (con rampa ♿)</string>
     <string name="map_unit_line_singular">línea</string>
     <string name="map_unit_line_plural">líneas</string>
+    <string name="map_bus_does_not_pass_stop">Este colectivo no pasa por esta parada</string>
+    <string name="map_location_disabled">La ubicación está desactivada en tu dispositivo</string>
+    <string name="map_no_active_network">Usted no tiene una conexión de red activa</string>
+    <string name="map_network_found">Conexión de red encontrada</string>
 
     <!-- Floating Bus Info Card -->
     <string name="map_bus_card_calculating_stop">Calculando a tu parada…</string>

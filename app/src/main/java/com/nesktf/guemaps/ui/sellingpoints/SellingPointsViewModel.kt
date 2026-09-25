@@ -13,6 +13,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Looper
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.data.local.GuemapsDatabase
@@ -192,12 +193,24 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun startLocationUpdates(onLocationReady: ((Location) -> Unit)? = null) {
+    fun isLocationPermissionGranted(): Boolean {
         val app = getApplication<Application>()
         val hasFine = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         val hasCoarse = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        return hasFine || hasCoarse
+    }
 
-        if (!hasFine && !hasCoarse) return
+    fun isLocationProviderEnabled(): Boolean {
+        return try {
+            LocationManagerCompat.isLocationEnabled(locationManager)
+        } catch (_: Exception) {
+            val enabledProviders = try { locationManager.getProviders(true) } catch (_: Exception) { emptyList() }
+            enabledProviders.isNotEmpty()
+        }
+    }
+
+    fun startLocationUpdates(onLocationReady: ((Location) -> Unit)? = null) {
+        if (!isLocationPermissionGranted() || !isLocationProviderEnabled()) return
 
         _uiState.update { it.copy(isLocatingUser = true) }
 
@@ -251,7 +264,7 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
 
         locationTimeoutJob?.cancel()
         locationTimeoutJob = viewModelScope.launch {
-            delay(300_000L)
+            delay(30_000L)
             stopLocationUpdates()
         }
     }
