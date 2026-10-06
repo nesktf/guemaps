@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Güemaps - Ajuste Compartido</title>
+  <meta name="description" content="Abre este ajuste de líneas de colectivos en la aplicación Güemaps.">
+  <meta name="theme-color" content="#1e299b">
+  <link rel="icon" type="image/ico" href="../favicon.ico">
+
+  <!-- Cousine font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../pico.min.css">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .preset-card {
+      max-width: 480px;
+      margin: 3rem auto;
+      text-align: center;
+      padding: 2rem;
+    }
+    .line-chip {
+      display: inline-block;
+      background: #e8eaf6;
+      color: #1e299b;
+      padding: 0.35rem 0.75rem;
+      border-radius: 12px;
+      font-weight: bold;
+      margin: 0.25rem;
+    }
+    .action-buttons {
+      margin-top: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+
+  <main class="container">
+    <article class="preset-card card-box">
+      <div class="app-icon-wrapper" style="margin-bottom: 1rem;">
+        <img src="../img/app_icon.webp" alt="Güemaps" class="app-icon" width="96" height="96">
+      </div>
+      
+      <h2 id="preset-title" style="margin-bottom: 0.5rem;">Ajuste de Colectivos</h2>
+      <p id="preset-subtitle" class="lead" style="font-size: 1rem; color: var(--pico-muted-color);">
+        Cargando líneas compartidas…
+      </p>
+
+      <div id="lines-container" style="margin: 1.25rem 0;"></div>
+
+      <div class="action-buttons">
+        <a id="btn-open-app" href="#" class="button primary pico-background-indigo-750" style="width: 100%; justify-content: center;">
+          Abrir en Güemaps
+        </a>
+        <a href="../index.html" class="button secondary" style="width: 100%; justify-content: center;">
+          Descargar Aplicación
+        </a>
+      </div>
+    </article>
+  </main>
+
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var linesParam = params.get('l') || params.get('lines');
+      var nameParam = params.get('n') || params.get('name');
+
+      var titleEl = document.getElementById('preset-title');
+      var subtitleEl = document.getElementById('preset-subtitle');
+      var linesContainer = document.getElementById('lines-container');
+      var btnOpenApp = document.getElementById('btn-open-app');
+
+      var appSchemeUrl = 'guemaps://preset' + window.location.search;
+      btnOpenApp.href = appSchemeUrl;
+
+      if (nameParam) {
+        titleEl.textContent = nameParam;
+      }
+
+      if (linesParam) {
+        var lines = linesParam.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        subtitleEl.textContent = lines.length + (lines.length === 1 ? ' línea incluida' : ' líneas incluidas');
+        
+        linesContainer.innerHTML = '';
+        lines.forEach(function(code) {
+          var span = document.createElement('span');
+          span.className = 'line-chip';
+          span.textContent = 'Línea ' + code;
+          linesContainer.appendChild(span);
+        });
+      } else {
+        subtitleEl.textContent = 'Ajuste de líneas de Güemaps';
+      }
+
+      // Try opening app directly on mobile
+      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        window.location.href = appSchemeUrl;
+      }
+    })();
+  </script>
+
+</body>
+</html>
