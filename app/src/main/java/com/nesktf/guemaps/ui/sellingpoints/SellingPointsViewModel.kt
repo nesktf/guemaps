@@ -188,7 +188,6 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
 
     fun startLocationUpdates(onLocationReady: ((Location) -> Unit)? = null) {
         locationTracker.requestLocationUpdates(
-            scope = viewModelScope,
             onLocationChanged = { loc ->
                 setUserLocationInternal(loc)
                 onLocationReady?.invoke(loc)

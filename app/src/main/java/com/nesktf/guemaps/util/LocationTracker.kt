@@ -9,16 +9,11 @@ import android.location.LocationManager
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 class LocationTracker(private val context: Context) {
 
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     private var locationListener: LocationListener? = null
-    private var timeoutJob: Job? = null
 
     fun isPermissionGranted(): Boolean {
         val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -50,10 +45,8 @@ class LocationTracker(private val context: Context) {
     }
 
     fun requestLocationUpdates(
-        scope: CoroutineScope,
         onLocationChanged: (Location) -> Unit,
-        onLocatingChanged: (Boolean) -> Unit,
-        timeoutMs: Long = 30_000L
+        onLocatingChanged: (Boolean) -> Unit
     ) {
         if (!isPermissionGranted() || !isProviderEnabled()) return
 
@@ -86,17 +79,9 @@ class LocationTracker(private val context: Context) {
                 locationManager.requestLocationUpdates(p, 2000L, 2f, listener, Looper.getMainLooper())
             } catch (_: SecurityException) {}
         }
-
-        timeoutJob?.cancel()
-        timeoutJob = scope.launch {
-            delay(timeoutMs)
-            stopLocationUpdates(onLocatingChanged)
-        }
     }
 
     fun stopLocationUpdates(onLocatingChanged: ((Boolean) -> Unit)? = null) {
-        timeoutJob?.cancel()
-        timeoutJob = null
         onLocatingChanged?.invoke(false)
         locationListener?.let {
             try { locationManager.removeUpdates(it) } catch (_: SecurityException) {}

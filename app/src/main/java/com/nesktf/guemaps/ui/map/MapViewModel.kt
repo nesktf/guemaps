@@ -687,7 +687,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun requestUserLocation(onLocationReady: ((Location) -> Unit)? = null) {
         locationTracker.requestLocationUpdates(
-            scope = viewModelScope,
             onLocationChanged = { loc ->
                 setUserLocationInternal(loc)
                 onLocationReady?.invoke(loc)
