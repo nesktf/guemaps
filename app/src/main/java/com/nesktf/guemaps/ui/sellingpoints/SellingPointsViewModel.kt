@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nesktf.guemaps.GuemapsApplication
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.model.SellingPoint
 import com.nesktf.guemaps.data.remote.SaetaApiClient
@@ -110,9 +111,8 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     init {
-        val database = GuemapsDatabase(application)
-        val apiClient = SaetaApiClient()
-        repository = BusRepository(apiClient, database)
+        repository = (application as? GuemapsApplication)?.busRepository
+            ?: BusRepository(SaetaApiClient(), GuemapsDatabase(application))
         loadSellingPoints()
         startLocationUpdates()
         setupNetworkCallback()

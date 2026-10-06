@@ -9,6 +9,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nesktf.guemaps.GuemapsApplication
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.model.CardBalanceResponse
 import com.nesktf.guemaps.data.model.SavedCard
@@ -49,10 +50,9 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
     val uiState: StateFlow<BalanceUiState> = _uiState.asStateFlow()
 
     init {
-        val database = GuemapsDatabase(application)
-        val apiClient = SaetaApiClient()
-        repository = CardRepository(apiClient, database)
-        busRepository = BusRepository(apiClient, database)
+        val app = application as? GuemapsApplication
+        repository = app?.cardRepository ?: CardRepository(SaetaApiClient(), GuemapsDatabase(application))
+        busRepository = app?.busRepository ?: BusRepository(SaetaApiClient(), GuemapsDatabase(application))
         loadRecentCards()
         loadFavoriteCards()
         loadCaptcha()

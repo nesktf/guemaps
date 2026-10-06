@@ -799,6 +799,34 @@ class BusModelsTest {
         val uiStateRouteOffline = uiStateDefault.copy(isRouteOffline = true)
         assertTrue(uiStateRouteOffline.isRouteOffline)
     }
+
+    @Test
+    fun testComputeBusLiveDetails() {
+        val tracker = BusSpeedTracker()
+        val bus = BusPos(
+            interno = "101",
+            latitud = -24.7850,
+            longitud = -65.4110,
+            velocidad = 25.0,
+            rumbo = 90.0,
+            proximaParada = "Av. San Martin",
+            linea = "1A"
+        )
+        val stopNode = BusNode(
+            latitud = -24.7860,
+            longitud = -65.4120,
+            parada = true,
+            codigoParada = "ST01",
+            descripcionParada = "Parada 1"
+        )
+        val details = computeBusLiveDetails(
+            buses = listOf(bus),
+            allNodes = listOf(stopNode),
+            speedTracker = tracker
+        )
+        assertTrue(details.containsKey("101"))
+        assertEquals("101", details["101"]?.bus?.interno)
+    }
 }
 
 

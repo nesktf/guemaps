@@ -4,6 +4,7 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nesktf.guemaps.GuemapsApplication
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.local.NewsImageCache
 import com.nesktf.guemaps.data.model.NewsArticle
@@ -34,10 +35,8 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
 
     init {
-        val database = GuemapsDatabase(application)
-        val scraperClient = NewsScraperClient()
-        val imageCache = NewsImageCache(application)
-        repository = NewsRepository(scraperClient, database, imageCache)
+        repository = (application as? GuemapsApplication)?.newsRepository
+            ?: NewsRepository(NewsScraperClient(), GuemapsDatabase(application), NewsImageCache(application))
 
         // 1. Immediately load cached news from SQLite
         val cached = repository.getCachedArticles()

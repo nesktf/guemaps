@@ -1,5 +1,6 @@
 package com.nesktf.guemaps.data.model
 
+import android.location.Location
 import com.google.gson.JsonArray
 import com.google.gson.annotations.SerializedName
 import java.security.MessageDigest
@@ -567,6 +568,97 @@ class BusSpeedTracker(
     fun clear() {
         busStates.clear()
     }
+}
+
+fun computeBusLiveDetails(
+    buses: List<BusPos>,
+    allNodes: List<BusNode>,
+    speedTracker: BusSpeedTracker,
+    userLocation: Location? = null,
+    selectedReferenceStop: MapBusStop? = null,
+    now: Long = System.currentTimeMillis(),
+    arrivalTimeOffsetSeconds: Long = 120L
+): Map<String, BusLiveDetails> {
+    val stops = allNodes.filter { it.parada }
+
+    val (refStopLat, refStopLon, refStopName) = if (selectedReferenceStop != null) {
+        Triple(selectedReferenceStop.latitude, selectedReferenceStop.longitude, selectedReferenceStop.name.takeIf { it.isNotBlank() } ?: selectedReferenceStop.code)
+    } else {
+        val userNearestStop = if (userLocation != null && stops.isNotEmpty()) {
+            stops.minByOrNull {
+                val dLat = userLocation.latitude - it.latitud
+                val dLon = userLocation.longitude - it.longitud
+                dLat * dLat + dLon * dLon
+            }
+        } else null
+        if (userNearestStop != null) {
+            Triple(userNearestStop.latitud, userNearestStop.longitud, userNearestStop.descripcionParada?.takeIf { it.isNotBlank() } ?: userNearestStop.codigoParada)
+        } else {
+            Triple(null, null, null)
+        }
+    }
+
+    val detailsMap = mutableMapOf<String, BusLiveDetails>()
+
+    buses.forEach { bus ->
+        val evaluation = speedTracker.processBusPosition(bus, now)
+        val speed = evaluation.instantSpeedKmh
+        val avgSpeed = evaluation.averageSpeedKmh
+
+        var userStopDist: Double? = null
+        var userStopName: String? = null
+        if (refStopLat != null && refStopLon != null) {
+            userStopDist = calculateDistanceMeters(bus.latitud, bus.longitud, refStopLat, refStopLon)
+            userStopName = refStopName
+        }
+
+        var busStopName: String? = null
+        var busStopDist: Double? = null
+        if (stops.isNotEmpty()) {
+            val nearestToBus = stops.minByOrNull {
+                val dLat = bus.latitud - it.latitud
+                val dLon = bus.longitud - it.longitud
+                dLat * dLat + dLon * dLon
+            }
+            if (nearestToBus != null) {
+                busStopName = nearestToBus.descripcionParada?.takeIf { it.isNotBlank() } ?: nearestToBus.codigoParada
+                busStopDist = calculateDistanceMeters(bus.latitud, bus.longitud, nearestToBus.latitud, nearestToBus.longitud)
+            }
+        }
+
+        var estimatedSeconds: Long? = null
+        var estimatedArrivalEpoch: Long? = null
+        if (userStopDist != null) {
+            if (userStopDist <= 25.0) {
+                estimatedSeconds = 0L
+                estimatedArrivalEpoch = now
+            } else {
+                val effectiveSpeed = avgSpeed ?: speed
+                if (effectiveSpeed != null && effectiveSpeed >= 1.0) {
+                    val speedMps = effectiveSpeed / 3.6
+                    val rawSecs = Math.round(userStopDist / speedMps)
+                    val totalSecs = rawSecs + arrivalTimeOffsetSeconds
+                    estimatedSeconds = totalSecs
+                    estimatedArrivalEpoch = now + (totalSecs * 1000L)
+                }
+            }
+        }
+
+        detailsMap[bus.interno] = BusLiveDetails(
+            bus = bus,
+            speedKmh = speed,
+            averageSpeedKmh = avgSpeed,
+            userNearestStopName = userStopName,
+            distanceToUserStopMeters = userStopDist,
+            nearestStopName = busStopName ?: bus.proximaParada,
+            distanceToNearestStopMeters = busStopDist,
+            estimatedSecondsRemaining = estimatedSeconds,
+            estimatedArrivalEpochMs = estimatedArrivalEpoch
+        )
+    }
+    speedTracker.pruneTrackersExcept(buses.map { it.interno }.toSet())
+
+    return detailsMap
 }
 
 data class SellingPoint(
