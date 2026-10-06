@@ -53,7 +53,7 @@
     <string name="about_link_mail_url">mailto:nesktf@proton.me</string>
     <string name="about_link_website_title">Sitio Web</string>
     <string name="about_link_website_desc">Página web oficial del proyecto</string>
-    <string name="about_link_website_url">https://guemaps.placeholder.com</string>
+    <string name="about_link_website_url">https://guemaps.app</string>
     <string name="about_link_api_tos_title">Términos de la API de MiRedBus</string>
     <string name="about_link_api_tos_desc">Términos y condiciones de uso para los servicios de MiRedBus</string>
     <string name="about_link_api_tos_url">https://salta.miredbus.com.ar/documentos/salta_terminosycondiciones.html</string>
@@ -204,4 +204,34 @@
     <string name="news_action_back_to_news">Volver a noticias</string>
     <string name="news_loading_detail">Cargando contenido completo…</string>
     <string name="news_error_format">No se pudieron cargar las noticias: %1$s</string>
+
+    <!-- Preset Sharing & QR -->
+    <string name="share_preset_title">Compartir Ajuste</string>
+    <string name="share_preset_button">Compartir</string>
+    <string name="share_preset_scan_button">Escanear QR</string>
+    <string name="share_preset_qr_title">Código QR</string>
+    <string name="share_preset_qr_desc">Escaneá este código desde Güemaps en otro dispositivo para cargar estas líneas.</string>
+    <string name="share_preset_link_action">Compartir enlace</string>
+    <string name="share_preset_copy_action">Copiar enlace</string>
+    <string name="share_preset_link_copied">Enlace copiado al portapapeles</string>
+    <string name="share_preset_share_chooser_title">Compartir ajuste de Güemaps</string>
+    <string name="share_preset_share_text">Ajuste de líneas de Güemaps: %1$s\nAbrir en la app: %2$s</string>
+    <string name="share_preset_default_name">Líneas activas</string>
+    <string name="share_preset_stop_label">Parada de referencia: %1$s</string>
+    <string name="share_preset_generating_qr">Generando código QR…</string>
+
+    <!-- QR Scanner -->
+    <string name="scanner_title">Escanear Código QR</string>
+    <string name="scanner_instruction">Apuntá la cámara al código QR de Güemaps</string>
+    <string name="scanner_camera_permission_title">Permiso de cámara requerido</string>
+    <string name="scanner_camera_permission_desc">Para escanear códigos QR de ajustes compartidos es necesario permitir el acceso a la cámara.</string>
+    <string name="scanner_grant_permission">Permitir cámara</string>
+    <string name="scanner_toggle_flash">Linterna</string>
+    <string name="scanner_invalid_qr">El código QR escaneado no es un ajuste válido de Güemaps</string>
+
+    <!-- Incoming Preset Overwrite Dialog -->
+    <string name="incoming_preset_dialog_title">Cargar ajuste compartido</string>
+    <string name="incoming_preset_dialog_desc">¿Deseas cargar el ajuste \"%1$s\" con %2$d líneas? Se reemplazarán tus líneas activas actuales en el mapa.</string>
+    <string name="incoming_preset_dialog_load_action">Cargar ajuste</string>
+    <string name="incoming_preset_error_invalid">El enlace de ajuste compartido es inválido o está dañado.</string>
 </resources>

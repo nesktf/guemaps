@@ -97,6 +97,10 @@ class BusRepository(
         return database.searchBusStops(query, limit)
     }
 
+    fun getCachedFlatLines(): List<FlatBusLine> {
+        return database.getCachedBusGroups()?.grupos?.flattenLines() ?: emptyList()
+    }
+
     fun getCachedRoutesCount(): Int = database.getCachedRoutesCount()
 
     fun getCachedStopsCount(): Int = database.getCachedStopsCount()

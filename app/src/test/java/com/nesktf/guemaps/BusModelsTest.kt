@@ -1,9 +1,7 @@
 package com.nesktf.guemaps
 
 import com.google.gson.Gson
-import com.nesktf.guemaps.data.model.BusGroupsResponse
-import com.nesktf.guemaps.data.model.BusPosResponse
-import com.nesktf.guemaps.data.model.BusRouteResponse
+import com.nesktf.guemaps.data.model.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -807,10 +805,8 @@ class BusModelsTest {
             interno = "101",
             latitud = -24.7850,
             longitud = -65.4110,
-            velocidad = 25.0,
-            rumbo = 90.0,
-            proximaParada = "Av. San Martin",
-            linea = "1A"
+            orientacion = 90.0f,
+            proximaParada = "Av. San Martin"
         )
         val stopNode = BusNode(
             latitud = -24.7860,

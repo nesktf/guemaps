@@ -45,7 +45,10 @@ import com.nesktf.guemaps.ui.notice.NoticeDialog
 import com.nesktf.guemaps.ui.notice.NoticePreferences
 import com.nesktf.guemaps.ui.sellingpoints.SellingPointsScreen
 import com.nesktf.guemaps.ui.sellingpoints.SellingPointsViewModel
+import com.nesktf.guemaps.ui.share.QrScannerScreen
+import com.nesktf.guemaps.ui.share.SharePresetScreen
 import com.nesktf.guemaps.ui.splash.SplashScreen
+import android.net.Uri
 import kotlinx.coroutines.delay
 
 enum class AppDestination {
@@ -57,6 +60,8 @@ enum class AppDestination {
 
 @Composable
 fun AppNavigation(
+    incomingUri: Uri? = null,
+    onIncomingUriConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -84,13 +89,19 @@ fun AppNavigation(
         if (!ready) {
             SplashScreen(currentTaskText = currentSplashTask, modifier = modifier)
         } else {
-            MainAppContent(modifier = modifier)
+            MainAppContent(
+                incomingUri = incomingUri,
+                onIncomingUriConsumed = onIncomingUriConsumed,
+                modifier = modifier
+            )
         }
     }
 }
 
 @Composable
 private fun MainAppContent(
+    incomingUri: Uri? = null,
+    onIncomingUriConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -100,6 +111,7 @@ private fun MainAppContent(
     val balanceViewModel: BalanceViewModel = viewModel()
     val newsViewModel: NewsViewModel = viewModel()
 
+    val mapState by mapViewModel.uiState.collectAsState()
     val unreadNewsCount by newsViewModel.unreadCount.collectAsState()
 
     var currentDestination by rememberSaveable { mutableStateOf(AppDestination.MAP) }
@@ -108,8 +120,27 @@ private fun MainAppContent(
         mutableStateOf(!NoticePreferences.isNoticeDisabled(context))
     }
 
+    LaunchedEffect(incomingUri) {
+        incomingUri?.let { uri ->
+            currentDestination = AppDestination.MAP
+            showAboutScreen = false
+            mapViewModel.handleIncomingUri(uri)
+            onIncomingUriConsumed()
+        }
+    }
+
     if (showAboutScreen) {
         AboutScreen(onBack = { showAboutScreen = false })
+    } else if (mapState.activePresetForSharing != null) {
+        SharePresetScreen(
+            payload = mapState.activePresetForSharing!!,
+            onBack = { mapViewModel.closeSharePreset() }
+        )
+    } else if (mapState.isQrScannerOpen) {
+        QrScannerScreen(
+            onQrScanned = { mapViewModel.handleScannedQr(it) },
+            onClose = { mapViewModel.setQrScannerOpen(false) }
+        )
     } else {
         Scaffold(
                     topBar = {

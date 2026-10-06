@@ -41,6 +41,9 @@ import com.nesktf.guemaps.data.model.BusPreset
 import com.nesktf.guemaps.data.model.calculateDistanceMeters
 import com.nesktf.guemaps.data.model.computeBusLiveDetails
 import com.nesktf.guemaps.data.model.computeLineCodesHash
+import com.nesktf.guemaps.util.PresetShareUtils
+import com.nesktf.guemaps.util.SharedPresetPayload
+import android.net.Uri
 import java.util.UUID
 
 class MapViewModel(application: Application) : AndroidViewModel(application) {
@@ -83,10 +86,21 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         // Restore saved selected lines on boot
         val savedLines = getSavedSelectedLines()
         if (savedLines.isNotEmpty()) {
+            val cachedCatalog = repository.getCachedFlatLines().associateBy { it.codLinea.trim() }
+            val enrichedSavedLines = if (cachedCatalog.isNotEmpty()) {
+                savedLines.map { line ->
+                    cachedCatalog[line.codLinea.trim()]?.let {
+                        line.copy(groupPath = it.groupPath, descripcion = it.descripcion)
+                    } ?: line
+                }
+            } else {
+                savedLines
+            }
+
             var colorIndex = 0
             val activeMap = mutableMapOf<String, ActiveLineData>()
             val palette = BUS_LINE_PALETTE.take(MAX_SELECTED_LINES)
-            savedLines.forEach { line ->
+            enrichedSavedLines.forEach { line ->
                 val color = palette[colorIndex % palette.size]
                 colorIndex++
                 activeMap[line.codLinea] = ActiveLineData(
@@ -97,14 +111,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             }
             _uiState.update {
                 it.copy(
-                    selectedLines = savedLines,
+                    selectedLines = enrichedSavedLines,
                     activeLines = activeMap,
-                    selectedLine = savedLines.firstOrNull(),
+                    selectedLine = enrichedSavedLines.firstOrNull(),
                     isLoadingRoute = true,
                     shouldFitRouteBounds = true
                 )
             }
-            savedLines.forEach { line ->
+            enrichedSavedLines.forEach { line ->
                 loadRouteForLine(line.codLinea)
             }
             restartActiveBusesPolling()
@@ -175,8 +189,36 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         savePresets(updated)
     }
 
+    fun enrichFlatLines(lines: List<FlatBusLine>): List<FlatBusLine> {
+        val catalog = if (_uiState.value.flatLines.isNotEmpty()) {
+            _uiState.value.flatLines
+        } else {
+            repository.getCachedFlatLines()
+        }
+        if (catalog.isEmpty()) return lines
+
+        val catalogMap = catalog.associateBy { it.codLinea.trim() }
+        return lines.map { line ->
+            val matched = catalogMap[line.codLinea.trim()]
+            if (matched != null) {
+                line.copy(
+                    groupPath = matched.groupPath,
+                    descripcion = matched.descripcion
+                )
+            } else {
+                line
+            }
+        }
+    }
+
+    fun enrichPayloadWithCatalog(payload: SharedPresetPayload): SharedPresetPayload {
+        val enrichedLines = enrichFlatLines(payload.lines)
+        return payload.copy(lines = enrichedLines)
+    }
+
     fun loadPreset(preset: BusPreset) {
-        val linesToLoad = preset.lines.take(MAX_SELECTED_LINES)
+        val enrichedLines = enrichFlatLines(preset.lines)
+        val linesToLoad = enrichedLines.take(MAX_SELECTED_LINES)
         busPollingJob?.cancel()
         saveSelectedLines(linesToLoad)
 
@@ -209,6 +251,145 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
         linesToLoad.forEach { loadRouteForLine(it.codLinea) }
         restartActiveBusesPolling()
+    }
+
+    fun loadPresetPayload(payload: SharedPresetPayload) {
+        val enrichedPayload = enrichPayloadWithCatalog(payload)
+        val linesToLoad = enrichedPayload.lines.take(MAX_SELECTED_LINES)
+        busPollingJob?.cancel()
+        saveSelectedLines(linesToLoad)
+
+        val palette = BUS_LINE_PALETTE.take(MAX_SELECTED_LINES)
+        val newActiveMap = mutableMapOf<String, ActiveLineData>()
+        linesToLoad.forEachIndexed { index, line ->
+            val color = palette[index % palette.size]
+            newActiveMap[line.codLinea] = ActiveLineData(
+                line = line,
+                colorHex = color,
+                isLoadingRoute = true
+            )
+        }
+
+        val refStop = enrichedPayload.stop?.let { s ->
+            MapBusStop(
+                id = s.stopCode.ifEmpty { "stop_${s.latitude}_${s.longitude}" },
+                name = s.stopName,
+                code = s.stopCode.ifEmpty { null },
+                latitude = s.latitude,
+                longitude = s.longitude,
+                lineCodes = if (s.lineId.isNotEmpty()) listOf(s.lineId) else emptyList()
+            )
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedLines = linesToLoad,
+                activeLines = newActiveMap,
+                selectedLine = linesToLoad.firstOrNull(),
+                selectedReferenceStop = refStop ?: it.selectedReferenceStop,
+                routeNodes = emptyList(),
+                activeBuses = emptyList(),
+                busLiveDetails = emptyMap(),
+                errorMessage = null,
+                shouldFitRouteBounds = true,
+                isLinePickerOpen = false,
+                incomingPresetForConfirmation = null,
+                activePresetForSharing = null,
+                isQrScannerOpen = false
+            )
+        }
+
+        busSpeedTracker.clear()
+
+        linesToLoad.forEach { loadRouteForLine(it.codLinea) }
+        restartActiveBusesPolling()
+        showFeedbackMessage(getApplication<Application>().getString(R.string.line_picker_preset_loaded, payload.name))
+    }
+
+    fun openShareCurrentActiveLines() {
+        val currentLines = _uiState.value.selectedLines
+        if (currentLines.isEmpty()) return
+
+        val refStop = _uiState.value.selectedReferenceStop?.let { s ->
+            BusStopRecord(
+                lineId = s.lineCodes.firstOrNull() ?: currentLines.firstOrNull()?.codLinea ?: "",
+                stopCode = s.code ?: s.id,
+                stopName = s.name,
+                latitude = s.latitude,
+                longitude = s.longitude
+            )
+        }
+
+        val defaultName = getApplication<Application>().getString(R.string.share_preset_default_name)
+        val payload = SharedPresetPayload(
+            name = defaultName,
+            lines = currentLines,
+            stop = refStop
+        )
+        _uiState.update { it.copy(activePresetForSharing = payload, isLinePickerOpen = false) }
+    }
+
+    fun openShareStoredPreset(preset: BusPreset) {
+        val payload = SharedPresetPayload(
+            name = preset.name,
+            lines = preset.lines,
+            stop = _uiState.value.selectedReferenceStop?.let { s ->
+                BusStopRecord(
+                    lineId = s.lineCodes.firstOrNull() ?: preset.lines.firstOrNull()?.codLinea ?: "",
+                    stopCode = s.code ?: s.id,
+                    stopName = s.name,
+                    latitude = s.latitude,
+                    longitude = s.longitude
+                )
+            }
+        )
+        _uiState.update { it.copy(activePresetForSharing = payload, isLinePickerOpen = false) }
+    }
+
+    fun closeSharePreset() {
+        _uiState.update { it.copy(activePresetForSharing = null) }
+    }
+
+    fun setQrScannerOpen(open: Boolean) {
+        _uiState.update { it.copy(isQrScannerOpen = open, isLinePickerOpen = false) }
+    }
+
+    fun handleScannedQr(content: String) {
+        val rawPayload = PresetShareUtils.decodeFromUri(content)
+        if (rawPayload != null) {
+            val payload = enrichPayloadWithCatalog(rawPayload)
+            _uiState.update { it.copy(isQrScannerOpen = false) }
+            if (_uiState.value.selectedLines.isEmpty()) {
+                loadPresetPayload(payload)
+            } else {
+                _uiState.update { it.copy(incomingPresetForConfirmation = payload) }
+            }
+        } else {
+            showFeedbackMessage(getApplication<Application>().getString(R.string.scanner_invalid_qr))
+        }
+    }
+
+    fun handleIncomingUri(uri: Uri) {
+        val rawPayload = PresetShareUtils.decodeFromUri(uri)
+        if (rawPayload != null) {
+            val payload = enrichPayloadWithCatalog(rawPayload)
+            if (_uiState.value.selectedLines.isEmpty()) {
+                loadPresetPayload(payload)
+            } else {
+                _uiState.update { it.copy(incomingPresetForConfirmation = payload) }
+            }
+        } else {
+            showFeedbackMessage(getApplication<Application>().getString(R.string.incoming_preset_error_invalid))
+        }
+    }
+
+    fun confirmLoadIncomingPreset() {
+        val payload = _uiState.value.incomingPresetForConfirmation ?: return
+        loadPresetPayload(payload)
+    }
+
+    fun dismissIncomingPresetConfirmation() {
+        _uiState.update { it.copy(incomingPresetForConfirmation = null) }
     }
 
     fun loadFavoriteLines() {
@@ -264,6 +445,37 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
                 _uiState.update { state ->
                     val filtered = filterLines(groupsResult.flatLines, state.searchQuery)
+                    val catalogMap = groupsResult.flatLines.associateBy { it.codLinea.trim() }
+
+                    val updatedSelectedLines = state.selectedLines.map { line ->
+                        catalogMap[line.codLinea.trim()]?.let { matched ->
+                            line.copy(groupPath = matched.groupPath, descripcion = matched.descripcion)
+                        } ?: line
+                    }
+
+                    val updatedActiveLines = state.activeLines.mapValues { (code, activeData) ->
+                        val matched = catalogMap[code.trim()]
+                        if (matched != null) {
+                            activeData.copy(
+                                line = activeData.line.copy(
+                                    groupPath = matched.groupPath,
+                                    descripcion = matched.descripcion
+                                )
+                            )
+                        } else {
+                            activeData
+                        }
+                    }
+
+                    val updatedIncomingPreset = state.incomingPresetForConfirmation?.let { incoming ->
+                        val enrichedIncomingLines = incoming.lines.map { line ->
+                            catalogMap[line.codLinea.trim()]?.let {
+                                line.copy(groupPath = it.groupPath, descripcion = it.descripcion)
+                            } ?: line
+                        }
+                        incoming.copy(lines = enrichedIncomingLines)
+                    }
+
                     state.copy(
                         isLoadingGroups = false,
                         busGroups = groupsResult.rootGroup,
@@ -271,6 +483,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         expandedSubgroups = if (state.expandedSubgroups.isEmpty()) bootSubgroups else state.expandedSubgroups,
                         flatLines = groupsResult.flatLines,
                         filteredLines = filtered,
+                        selectedLines = updatedSelectedLines,
+                        activeLines = updatedActiveLines,
+                        incomingPresetForConfirmation = updatedIncomingPreset,
                         isGroupsOffline = groupsResult.isFromCache,
                         errorMessage = null
                     )

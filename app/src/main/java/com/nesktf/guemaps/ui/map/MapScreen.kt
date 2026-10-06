@@ -53,10 +53,12 @@ import androidx.compose.material.icons.filled.NavigateNext
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -1109,7 +1111,7 @@ fun MapScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(bottom = 8.dp),
+                                        .padding(bottom = 6.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Button(
@@ -1137,6 +1139,39 @@ fun MapScreen(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(stringResource(R.string.action_clear), color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.openShareCurrentActiveLines() },
+                                        enabled = state.selectedLines.isNotEmpty(),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Share,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(stringResource(R.string.share_preset_button))
+                                    }
+                                    OutlinedButton(
+                                        onClick = { viewModel.setQrScannerOpen(true) },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCodeScanner,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(stringResource(R.string.share_preset_scan_button))
                                     }
                                 }
 
@@ -1284,7 +1319,20 @@ fun MapScreen(
                                                         Text(stringResource(R.string.line_picker_load_preset))
                                                     }
 
-                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+
+                                                    IconButton(
+                                                        onClick = { viewModel.openShareStoredPreset(preset) },
+                                                        modifier = Modifier.size(36.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Share,
+                                                            contentDescription = stringResource(R.string.share_preset_title),
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+
+                                                    Spacer(modifier = Modifier.width(2.dp))
 
                                                     IconButton(
                                                         onClick = { presetToDelete = preset },
@@ -1442,6 +1490,35 @@ fun MapScreen(
             },
             dismissButton = {
                 TextButton(onClick = { presetToDelete = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    if (state.incomingPresetForConfirmation != null) {
+        val incoming = state.incomingPresetForConfirmation!!
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissIncomingPresetConfirmation() },
+            title = { Text(stringResource(R.string.incoming_preset_dialog_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.incoming_preset_dialog_desc,
+                        incoming.name,
+                        incoming.lines.size
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmLoadIncomingPreset() }
+                ) {
+                    Text(stringResource(R.string.incoming_preset_dialog_load_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissIncomingPresetConfirmation() }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }

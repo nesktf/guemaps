@@ -66,7 +66,10 @@ data class MapUiState(
     val isLinePickerOpen: Boolean = false,
     val showStops: Boolean = true,
     val cameraState: MapCameraState = MapCameraState(),
-    val shouldFitRouteBounds: Boolean = true
+    val shouldFitRouteBounds: Boolean = true,
+    val incomingPresetForConfirmation: com.nesktf.guemaps.util.SharedPresetPayload? = null,
+    val activePresetForSharing: com.nesktf.guemaps.util.SharedPresetPayload? = null,
+    val isQrScannerOpen: Boolean = false
 )
 
 sealed class AddStopResult {
