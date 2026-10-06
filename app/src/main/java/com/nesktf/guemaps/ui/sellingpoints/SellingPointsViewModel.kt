@@ -1,19 +1,12 @@
 package com.nesktf.guemaps.ui.sellingpoints
 
-import android.Manifest
 import android.app.Application
 import android.content.Context
-import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
-import android.os.Looper
-import androidx.core.content.ContextCompat
-import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.GuemapsApplication
@@ -22,8 +15,7 @@ import com.nesktf.guemaps.data.model.SellingPoint
 import com.nesktf.guemaps.data.remote.SaetaApiClient
 import com.nesktf.guemaps.data.repository.BusRepository
 import com.nesktf.guemaps.ui.map.MapCameraState
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import com.nesktf.guemaps.util.LocationTracker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -98,16 +90,13 @@ data class SellingPointsUiState(
 class SellingPointsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: BusRepository
-    private val locationManager: LocationManager =
-        application.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+    private val locationTracker = LocationTracker(application)
     private val connectivityManager: ConnectivityManager =
         application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private val _uiState = MutableStateFlow(SellingPointsUiState())
     val uiState: StateFlow<SellingPointsUiState> = _uiState.asStateFlow()
 
-    private var locationListener: LocationListener? = null
-    private var locationTimeoutJob: Job? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     init {
@@ -193,87 +182,26 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun isLocationPermissionGranted(): Boolean {
-        val app = getApplication<Application>()
-        val hasFine = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val hasCoarse = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        return hasFine || hasCoarse
-    }
+    fun isLocationPermissionGranted(): Boolean = locationTracker.isPermissionGranted()
 
-    fun isLocationProviderEnabled(): Boolean {
-        return try {
-            LocationManagerCompat.isLocationEnabled(locationManager)
-        } catch (_: Exception) {
-            val enabledProviders = try { locationManager.getProviders(true) } catch (_: Exception) { emptyList() }
-            enabledProviders.isNotEmpty()
-        }
-    }
+    fun isLocationProviderEnabled(): Boolean = locationTracker.isProviderEnabled()
 
     fun startLocationUpdates(onLocationReady: ((Location) -> Unit)? = null) {
-        if (!isLocationPermissionGranted() || !isLocationProviderEnabled()) return
-
-        _uiState.update { it.copy(isLocatingUser = true) }
-
-        val allProviders = try { locationManager.allProviders } catch (_: Exception) { emptyList() }
-
-        var bestLast: Location? = null
-        for (p in allProviders) {
-            try {
-                val loc = locationManager.getLastKnownLocation(p)
-                if (loc != null && (bestLast == null || loc.time > bestLast.time)) {
-                    bestLast = loc
-                }
-            } catch (_: SecurityException) {}
-        }
-
-        if (bestLast != null) {
-            setUserLocationInternal(bestLast)
-            onLocationReady?.invoke(bestLast)
-        }
-
-        locationListener?.let {
-            try { locationManager.removeUpdates(it) } catch (_: SecurityException) {}
-        }
-
-        var isInitialFix = true
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                setUserLocationInternal(location)
-                if (isInitialFix || _uiState.value.isLocatingUser) {
-                    isInitialFix = false
-                    _uiState.update { it.copy(isLocatingUser = false) }
-                    onLocationReady?.invoke(location)
-                }
+        locationTracker.requestLocationUpdates(
+            scope = viewModelScope,
+            onLocationChanged = { loc ->
+                setUserLocationInternal(loc)
+                onLocationReady?.invoke(loc)
+            },
+            onLocatingChanged = { isLocating ->
+                _uiState.update { it.copy(isLocatingUser = isLocating) }
             }
-            override fun onProviderDisabled(provider: String) {}
-            override fun onProviderEnabled(provider: String) {}
-        }
-        locationListener = listener
-        val enabledProviders = try { locationManager.getProviders(true) } catch (_: Exception) { emptyList() }
-        for (p in enabledProviders) {
-            try {
-                locationManager.requestLocationUpdates(
-                    p,
-                    2000L,
-                    2f,
-                    listener,
-                    Looper.getMainLooper()
-                )
-            } catch (_: SecurityException) {}
-        }
-
-        locationTimeoutJob?.cancel()
-        locationTimeoutJob = viewModelScope.launch {
-            delay(30_000L)
-            stopLocationUpdates()
-        }
+        )
     }
 
     private fun stopLocationUpdates() {
-        _uiState.update { it.copy(isLocatingUser = false) }
-        locationListener?.let {
-            try { locationManager.removeUpdates(it) } catch (_: SecurityException) {}
-            locationListener = null
+        locationTracker.stopLocationUpdates { isLocating ->
+            _uiState.update { it.copy(isLocatingUser = isLocating) }
         }
     }
 

@@ -86,11 +86,6 @@ class GuemapsDatabase(
         private const val COL_NA_CACHED_AT = "cached_at"
     }
 
-    override fun onOpen(db: SQLiteDatabase) {
-        super.onOpen(db)
-        onCreate(db)
-    }
-
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """
