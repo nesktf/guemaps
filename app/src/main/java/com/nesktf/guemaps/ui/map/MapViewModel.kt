@@ -24,6 +24,7 @@ import com.nesktf.guemaps.data.model.MapBusStop
 import com.nesktf.guemaps.data.model.clusterBusStops
 import com.nesktf.guemaps.data.remote.SaetaApiClient
 import com.nesktf.guemaps.data.repository.BusRepository
+import com.nesktf.guemaps.util.LocationFollowController
 import com.nesktf.guemaps.util.LocationTracker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -63,6 +64,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val mapPreferences = MapPreferences(application)
     private val locationTracker = LocationTracker(application)
+    private val locationFollowController = LocationFollowController(viewModelScope)
     private val repository: BusRepository
     private var busPollingJob: Job? = null
     private val busSpeedTracker = com.nesktf.guemaps.data.model.BusSpeedTracker(bufferSize = SPEED_BUFFER_SIZE)
@@ -79,6 +81,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
         // Setup network connectivity callback for offline/online handling
         setupNetworkCallback()
+
+        viewModelScope.launch {
+            locationFollowController.state.collect { followState ->
+                _uiState.update {
+                    it.copy(
+                        isFollowingUserLocation = followState.isFollowing,
+                        cameraFocusRequest = followState.focusRequest
+                    )
+                }
+            }
+        }
 
         // Load presets
         loadPresets()
@@ -246,6 +259,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 isLinePickerOpen = false
             )
         }
+        locationFollowController.onUserCameraInteraction()
 
         busSpeedTracker.clear()
 
@@ -298,6 +312,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 isQrScannerOpen = false
             )
         }
+        locationFollowController.onUserCameraInteraction()
 
         busSpeedTracker.clear()
 
@@ -577,6 +592,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     shouldFitRouteBounds = true
                 )
             }
+            locationFollowController.onUserCameraInteraction()
 
             loadRouteForLine(line.codLinea)
             restartActiveBusesPolling()
@@ -900,16 +916,34 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun isLocationProviderEnabled(): Boolean = locationTracker.isProviderEnabled()
 
-    fun requestUserLocation(onLocationReady: ((Location) -> Unit)? = null) {
+    fun requestUserLocation() {
         locationTracker.requestLocationUpdates(
             onLocationChanged = { loc ->
                 setUserLocationInternal(loc)
-                onLocationReady?.invoke(loc)
             },
             onLocatingChanged = { isLocating ->
                 _uiState.update { it.copy(isLocatingUser = isLocating) }
             }
         )
+    }
+
+    fun focusOnUserLocation(defaultZoom: Double = 17.0) {
+        locationFollowController.focusNow(defaultZoom)
+        if (isLocationPermissionGranted() && isLocationProviderEnabled()) {
+            requestUserLocation()
+        }
+    }
+
+    fun onUserCameraInteraction() {
+        locationFollowController.onUserCameraInteraction()
+    }
+
+    fun onZoomButtonPressed() {
+        locationFollowController.onZoomButtonPressed()
+    }
+
+    fun consumeCameraFocusRequest(requestId: Long) {
+        locationFollowController.consumeFocusRequest(requestId)
     }
 
     private fun stopLocationUpdates() {
@@ -924,10 +958,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onRouteBoundsFitted() {
         _uiState.update { it.copy(shouldFitRouteBounds = false) }
+        locationFollowController.onUserCameraInteraction()
     }
 
     private fun setUserLocationInternal(location: Location) {
         _uiState.update { it.copy(userLocation = location) }
+        locationFollowController.onLocationUpdated(location.latitude, location.longitude)
         if (_uiState.value.selectedReferenceStop == null) {
             updateNearestReferenceStop(location)
         }
@@ -1128,6 +1164,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         syncJob?.cancel()
         stopToastJob?.cancel()
         reconnectionJob?.cancel()
+        locationFollowController.cancel()
         networkCallback?.let {
             try { connectivityManager.unregisterNetworkCallback(it) } catch (_: Exception) {}
             networkCallback = null

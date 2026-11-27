@@ -15,6 +15,8 @@ import com.nesktf.guemaps.data.model.SellingPoint
 import com.nesktf.guemaps.data.remote.SaetaApiClient
 import com.nesktf.guemaps.data.repository.BusRepository
 import com.nesktf.guemaps.ui.map.MapCameraState
+import com.nesktf.guemaps.util.CameraFocusRequest
+import com.nesktf.guemaps.util.LocationFollowController
 import com.nesktf.guemaps.util.LocationTracker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +45,8 @@ data class SellingPointsUiState(
     val userLocation: Location? = null,
     val initialSortLocation: Location? = null,
     val isLocatingUser: Boolean = false,
+    val isFollowingUserLocation: Boolean = false,
+    val cameraFocusRequest: CameraFocusRequest? = null,
     val errorMessage: String? = null,
     val cameraState: MapCameraState = MapCameraState(-24.7859, -65.4117, 14.0),
     val isSearchDrawerOpen: Boolean = false,
@@ -91,6 +95,7 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
 
     private val repository: BusRepository
     private val locationTracker = LocationTracker(application)
+    private val locationFollowController = LocationFollowController(viewModelScope)
     private val connectivityManager: ConnectivityManager =
         application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
@@ -105,6 +110,16 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
         loadSellingPoints()
         startLocationUpdates()
         setupNetworkCallback()
+        viewModelScope.launch {
+            locationFollowController.state.collect { followState ->
+                _uiState.update {
+                    it.copy(
+                        isFollowingUserLocation = followState.isFollowing,
+                        cameraFocusRequest = followState.focusRequest
+                    )
+                }
+            }
+        }
     }
 
     private fun setUserLocationInternal(location: Location) {
@@ -115,6 +130,7 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
                 initialSortLocation = sortLoc
             )
         }
+        locationFollowController.onLocationUpdated(location.latitude, location.longitude)
     }
 
     fun loadSellingPoints(forceNetwork: Boolean = false) {
@@ -186,16 +202,34 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
 
     fun isLocationProviderEnabled(): Boolean = locationTracker.isProviderEnabled()
 
-    fun startLocationUpdates(onLocationReady: ((Location) -> Unit)? = null) {
+    fun startLocationUpdates() {
         locationTracker.requestLocationUpdates(
             onLocationChanged = { loc ->
                 setUserLocationInternal(loc)
-                onLocationReady?.invoke(loc)
             },
             onLocatingChanged = { isLocating ->
                 _uiState.update { it.copy(isLocatingUser = isLocating) }
             }
         )
+    }
+
+    fun focusOnUserLocation(defaultZoom: Double = 16.0) {
+        locationFollowController.focusNow(defaultZoom)
+        if (isLocationPermissionGranted() && isLocationProviderEnabled()) {
+            startLocationUpdates()
+        }
+    }
+
+    fun onUserCameraInteraction() {
+        locationFollowController.onUserCameraInteraction()
+    }
+
+    fun onZoomButtonPressed() {
+        locationFollowController.onZoomButtonPressed()
+    }
+
+    fun consumeCameraFocusRequest(requestId: Long) {
+        locationFollowController.consumeFocusRequest(requestId)
     }
 
     private fun stopLocationUpdates() {
@@ -229,6 +263,7 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
 
     override fun onCleared() {
         super.onCleared()
+        locationFollowController.cancel()
         stopLocationUpdates()
         networkCallback?.let {
             try { connectivityManager.unregisterNetworkCallback(it) } catch (_: Exception) {}

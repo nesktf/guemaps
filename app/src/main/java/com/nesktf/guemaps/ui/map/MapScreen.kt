@@ -147,15 +147,23 @@ fun MapScreen(
             viewModel.clearFeedbackMessage()
         }
     }
+    LaunchedEffect(state.cameraFocusRequest?.id) {
+        val request = state.cameraFocusRequest ?: return@LaunchedEffect
+        if (request.zoom != null) {
+            mapActions.animateToLocation(request.latitude, request.longitude, request.zoom)
+        } else {
+            mapActions.panToLocation(request.latitude, request.longitude)
+        }
+        viewModel.consumeCameraFocusRequest(request.id)
+    }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (fineGranted || coarseGranted) {
-            viewModel.requestUserLocation { loc ->
-                mapActions.animateToLocation(loc.latitude, loc.longitude, 17.0)
-            }
+            viewModel.focusOnUserLocation(defaultZoom = 17.0)
         }
     }
 
@@ -212,6 +220,7 @@ fun MapScreen(
             shouldFitRouteBounds = state.shouldFitRouteBounds,
             onRouteBoundsFitted = { viewModel.onRouteBoundsFitted() },
             onCameraMoved = { lat, lon, zoom -> viewModel.updateMapCamera(lat, lon, zoom) },
+            onUserCameraGesture = { viewModel.onUserCameraInteraction() },
             onBusSelected = { viewModel.selectBusForFloatingCard(it) },
             onStopSelected = { viewModel.selectReferenceStop(it) },
             onShowStopToast = { viewModel.showStopToast(it) },
@@ -604,7 +613,10 @@ fun MapScreen(
         ) {
             // Zoom In (+)
             FloatingActionButton(
-                onClick = { mapActions.zoomIn() },
+                onClick = {
+                    viewModel.onZoomButtonPressed()
+                    mapActions.zoomIn()
+                },
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(44.dp)
@@ -617,7 +629,10 @@ fun MapScreen(
 
             // Zoom Out (-)
             FloatingActionButton(
-                onClick = { mapActions.zoomOut() },
+                onClick = {
+                    viewModel.onZoomButtonPressed()
+                    mapActions.zoomOut()
+                },
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(44.dp)
@@ -630,7 +645,10 @@ fun MapScreen(
 
             // Reset Map
             FloatingActionButton(
-                onClick = { mapActions.resetMap() },
+                onClick = {
+                    viewModel.onUserCameraInteraction()
+                    mapActions.resetMap()
+                },
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(44.dp)
@@ -644,14 +662,6 @@ fun MapScreen(
             // User Location
             FloatingActionButton(
                 onClick = {
-                    if (state.userLocation != null) {
-                        mapActions.animateToLocation(
-                            state.userLocation!!.latitude,
-                            state.userLocation!!.longitude,
-                            17.0
-                        )
-                    }
-
                     val fineGranted = ContextCompat.checkSelfPermission(
                         context, Manifest.permission.ACCESS_FINE_LOCATION
                     ) == PackageManager.PERMISSION_GRANTED
@@ -661,15 +671,16 @@ fun MapScreen(
 
                     if (fineGranted || coarseGranted) {
                         if (!viewModel.isLocationProviderEnabled()) {
+                            if (state.userLocation != null) {
+                                viewModel.focusOnUserLocation(defaultZoom = 17.0)
+                            }
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.map_location_disabled),
                                 Toast.LENGTH_SHORT
                             ).show()
                         } else {
-                            viewModel.requestUserLocation { loc ->
-                                mapActions.animateToLocation(loc.latitude, loc.longitude, 17.0)
-                            }
+                            viewModel.focusOnUserLocation(defaultZoom = 17.0)
                         }
                     } else {
                         locationPermissionLauncher.launch(
@@ -680,15 +691,27 @@ fun MapScreen(
                         )
                     }
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary,
+                containerColor = if (state.isFollowingUserLocation) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+                contentColor = if (state.isFollowingUserLocation) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
                 modifier = Modifier.size(44.dp)
             ) {
                 if (state.isLocatingUser) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
                         strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (state.isFollowingUserLocation) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
                     )
                 } else {
                     Icon(
@@ -1029,6 +1052,7 @@ fun MapScreen(
                                             onClick = {
                                                 viewModel.addBusLineFromStop(stop)
                                                 viewModel.setLinePickerOpen(false)
+                                                viewModel.onUserCameraInteraction()
                                                 mapActions.animateToLocation(stop.latitude, stop.longitude, 17.5)
                                             }
                                         )

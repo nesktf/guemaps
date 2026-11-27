@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -37,7 +38,10 @@ import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import android.location.Location
+import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.ViewConfiguration
+import kotlin.math.hypot
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.FolderOverlay
 import org.osmdroid.views.overlay.Marker
@@ -50,6 +54,7 @@ class MapActions {
     var zoomOut: () -> Unit = {}
     var resetMap: () -> Unit = {}
     var animateToLocation: (Double, Double, Double) -> Unit = { _, _, _ -> }
+    var panToLocation: (Double, Double) -> Unit = { _, _ -> }
 }
 
 @Composable
@@ -66,6 +71,7 @@ fun OsmMapView(
     shouldFitRouteBounds: Boolean = false,
     onRouteBoundsFitted: () -> Unit = {},
     onCameraMoved: (Double, Double, Double) -> Unit = { _, _, _ -> },
+    onUserCameraGesture: () -> Unit = {},
     onBusSelected: (String) -> Unit = {},
     onStopSelected: (MapBusStop) -> Unit = {},
     onShowStopToast: (String) -> Unit = {},
@@ -74,6 +80,7 @@ fun OsmMapView(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnUserCameraGesture = rememberUpdatedState(onUserCameraGesture)
 
     val zoomAnimator = remember {
         object {
@@ -126,6 +133,12 @@ fun OsmMapView(
             overlays.add(userLocationFolder)
             overlays.add(busesFolder)
 
+            val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+            var downX = 0f
+            var downY = 0f
+            var hasReportedGesture = false
+            var lastTouchTimeMs = 0L
+
             addMapListener(object : MapListener {
                 override fun onScroll(event: ScrollEvent?): Boolean {
                     val center = mapCenter
@@ -136,6 +149,12 @@ fun OsmMapView(
                 }
 
                 override fun onZoom(event: ZoomEvent?): Boolean {
+                    // Catch double-tap zoom gestures that bypass touchSlop drag detection.
+                    if (zoomAnimator.animator?.isRunning != true &&
+                        SystemClock.uptimeMillis() - lastTouchTimeMs < 500L
+                    ) {
+                        currentOnUserCameraGesture.value()
+                    }
                     val center = mapCenter
                     if (center != null) {
                         onCameraMoved(center.latitude, center.longitude, zoomLevelDouble)
@@ -149,13 +168,35 @@ fun OsmMapView(
             var snapRunnable: Runnable? = null
 
             setOnTouchListener { _, event ->
+                lastTouchTimeMs = SystemClock.uptimeMillis()
                 when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_POINTER_DOWN -> {
+                    MotionEvent.ACTION_DOWN -> {
+                        downX = event.x
+                        downY = event.y
+                        hasReportedGesture = false
+                    }
+                    MotionEvent.ACTION_POINTER_DOWN -> {
                         isPinching = true
                         snapRunnable?.let { removeCallbacks(it) }
                         zoomAnimator.cancel()
+                        if (!hasReportedGesture) {
+                            hasReportedGesture = true
+                            currentOnUserCameraGesture.value()
+                        }
                     }
-                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!hasReportedGesture &&
+                            hypot((event.x - downX).toDouble(), (event.y - downY).toDouble()) > touchSlop
+                        ) {
+                            hasReportedGesture = true
+                            currentOnUserCameraGesture.value()
+                        }
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (hasReportedGesture) {
+                            hasReportedGesture = false
+                            currentOnUserCameraGesture.value()
+                        }
                         if (isPinching) {
                             isPinching = false
                             snapRunnable?.let { removeCallbacks(it) }
@@ -205,6 +246,9 @@ fun OsmMapView(
         mapActions.animateToLocation = { lat, lon, zoom ->
             val snapped = Math.round(zoom).toDouble().coerceIn(8.0, 19.0)
             zoomAnimator.animate(mapView, snapped, 300L)
+            mapView.controller.animateTo(GeoPoint(lat, lon))
+        }
+        mapActions.panToLocation = { lat, lon ->
             mapView.controller.animateTo(GeoPoint(lat, lon))
         }
     }

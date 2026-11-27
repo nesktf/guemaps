@@ -58,6 +58,8 @@ data class MapUiState(
     val stopToastMessage: String? = null,
     val userLocation: Location? = null,
     val isLocatingUser: Boolean = false,
+    val isFollowingUserLocation: Boolean = false,
+    val cameraFocusRequest: com.nesktf.guemaps.util.CameraFocusRequest? = null,
     val isSpeedCardExpanded: Boolean = true,
     val isLoadingBuses: Boolean = false,
     val busesErrorMessage: String? = null,
