@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Política de Privacidad - Güemaps</title>
+  <meta name="description" content="Política de privacidad de la aplicación Güemaps para Android.">
+  <meta name="theme-color" content="#1e299b">
+  <link rel="icon" type="image/ico" href="../favicon.ico">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cousine:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../pico.min.css">
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    .policy-container {
+      max-width: 780px;
+      margin: 0 auto;
+    }
+    .policy-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .policy-header h1 {
+      font-size: 2.2rem;
+      margin-bottom: 0.4rem;
+    }
+    .policy-meta {
+      font-size: 0.9rem;
+      color: var(--pico-muted-color);
+    }
+    .policy-card {
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+    .policy-card h2 {
+      font-size: 1.25rem;
+      margin-top: 1.75rem;
+      margin-bottom: 0.6rem;
+    }
+    .policy-card h2:first-child {
+      margin-top: 0;
+    }
+    .policy-card p,
+    .policy-card li {
+      font-size: 0.95rem;
+      line-height: 1.65;
+      color: var(--pico-color);
+    }
+    .policy-back {
+      text-align: center;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <main class="container policy-container">
+    <header class="policy-header">
+      <div class="app-icon-wrapper" style="margin-bottom: 1rem;">
+        <a href="../index.html" aria-label="Volver al inicio de Güemaps">
+          <img src="../img/app_icon.webp" alt="Güemaps" class="app-icon" width="84" height="84" style="width: 84px; height: 84px; border-radius: 20px;">
+        </a>
+      </div>
+      <h1>Política de Privacidad</h1>
+      <p class="policy-meta">
+        Aplicación: <strong>Güemaps</strong> (<code>com.nesktf.guemaps</code>) · Desarrollador: <strong>nesktf</strong><br>
+        Última actualización: 27 de noviembre de 2026
+      </p>
+    </header>
+
+    <article class="card-box policy-card">
+      <h2>1. Resumen general</h2>
+      <p>
+        Güemaps es una aplicación móvil gratuita y de código abierto (licencia GNU GPLv3) orientada a consultar recorridos de colectivos, puntos de venta, saldo de tarjeta y novedades del transporte en Salta, Argentina.
+      </p>
+      <p>
+        <strong>Güemaps no recopila, almacena en servidores propios, vende ni comparte datos personales o sensibles de los usuarios.</strong> La aplicación no requiere registro ni inicio de sesión, no incluye publicidad y no utiliza herramientas de analítica ni rastreo.
+      </p>
+
+      <h2>2. Permisos del dispositivo y su uso</h2>
+      <p>
+        Todos los permisos solicitados por Güemaps son opcionales o estrictamente necesarios para sus funciones básicas y se procesan exclusivamente en el dispositivo del usuario:
+      </p>
+      <ul>
+        <li>
+          <strong>Ubicación (<code>ACCESS_FINE_LOCATION</code> / <code>ACCESS_COARSE_LOCATION</code>):</strong>
+          se utiliza únicamente mientras la aplicación está abierta para mostrar tu posición en el mapa, ubicar paradas y puntos de recarga cercanos, y calcular distancias estimadas. Las coordenadas de ubicación nunca se envían a servidores del desarrollador ni se comparten con terceros.
+        </li>
+        <li>
+          <strong>Cámara (<code>CAMERA</code>):</strong>
+          se utiliza únicamente cuando elegís escanear un código QR para importar un ajuste compartido de líneas de colectivos. El procesamiento del código QR ocurre de forma local en el dispositivo; no se guardan ni transmiten fotografías ni videos.
+        </li>
+        <li>
+          <strong>Internet y estado de red (<code>INTERNET</code> / <code>ACCESS_NETWORK_STATE</code>):</strong>
+          se utilizan para descargar recorridos, ubicaciones en tiempo real de colectivos, puntos de venta, tarifas, noticias, mosaicos de mapas y consultas de saldo, así como para detectar el modo sin conexión.
+        </li>
+      </ul>
+
+      <h2>3. Datos almacenados localmente</h2>
+      <p>
+        Para mejorar la experiencia y permitir el funcionamiento sin conexión, Güemaps guarda datos únicamente en el almacenamiento local de tu dispositivo (base de datos local y preferencias), tales como líneas favoritas, ajustes guardados, números de tarjeta consultados recientemente o marcados como favoritos, y caché de recorridos y noticias.
+      </p>
+      <p>
+        El desarrollador no tiene acceso a esta información. Podés eliminar todos los datos locales en cualquier momento borrando los datos de la aplicación desde los ajustes de Android o desinstalando Güemaps.
+      </p>
+
+      <h2>4. Servicios de terceros</h2>
+      <p>
+        Para mostrar información pública del transporte y mapas, la aplicación realiza solicitudes directas desde tu dispositivo a los siguientes servicios externos:
+      </p>
+      <ul>
+        <li>
+          <strong>SAETA / MiRedBus:</strong>
+          para obtener líneas, recorridos, posiciones de colectivos, puntos de venta, tarifas, noticias y consultar el saldo de tu tarjeta. Cuando realizás una consulta de saldo, el número de tarjeta y el código de verificación se envían directamente desde tu dispositivo a los servidores de SAETA/MiRedBus. Podés consultar sus condiciones en
+          <a href="https://salta.miredbus.com.ar/documentos/salta_terminosycondiciones.html" target="_blank" rel="noopener noreferrer">Términos y Condiciones de MiRedBus</a>.
+        </li>
+        <li>
+          <strong>OpenStreetMap:</strong>
+          para descargar los mosaicos del mapa mostrados en la aplicación. Al solicitar los mosaicos, los servidores de OpenStreetMap pueden recibir metadatos técnicos estándar de red (como la dirección IP y el agente de usuario), sujetos a la
+          <a href="https://osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noopener noreferrer">Política de Privacidad de OpenStreetMap Foundation</a>.
+        </li>
+      </ul>
+
+      <h2>5. Privacidad de menores</h2>
+      <p>
+        Güemaps no recopila intencionalmente información personal de menores de 13 años ni de ningún otro usuario.
+      </p>
+
+      <h2>6. Cambios en esta política</h2>
+      <p>
+        Esta política de privacidad puede actualizarse ocasionalmente para reflejar cambios en la aplicación o requisitos legales. Cualquier modificación se publicará en esta misma página indicando la nueva fecha de actualización.
+      </p>
+
+      <h2>7. Contacto</h2>
+      <p>
+        Si tenés dudas o consultas sobre esta política de privacidad, podés comunicarte con el desarrollador a través de correo electrónico en
+        <a href="mailto:nesktf@proton.me">nesktf@proton.me</a>
+        o mediante el repositorio oficial en
+        <a href="https://github.com/nesktf/guemaps" target="_blank" rel="noopener noreferrer">github.com/nesktf/guemaps</a>.
+      </p>
+    </article>
+
+    <div class="policy-back">
+      <a href="../index.html" class="button secondary">Volver al inicio</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="../index.html">Inicio</a>
+        <a href="https://github.com/nesktf/guemaps" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="mailto:nesktf@proton.me">Contacto</a>
+        <a href="https://salta.miredbus.com.ar/documentos/salta_terminosycondiciones.html" target="_blank" rel="noopener noreferrer">Términos MiRedBus</a>
+      </div>
+      <p>
+        Güemaps © 2026 nesktf. Publicado bajo licencia <strong>GNU General Public License v3.0</strong>.
+      </p>
+    </div>
+  </footer>
+
+</body>
+</html>
