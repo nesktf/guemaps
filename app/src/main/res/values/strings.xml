@@ -42,9 +42,9 @@
     <string name="about_project_desc_title">Descripción</string>
     <string name="about_project_desc_text">Güemaps es una aplicación orientada a la visualización de líneas de transporte urbano e interurbano en Salta que busca brindar una mejor experiencia de usuario que las alternativas oficiales.</string>
     <string name="about_links_title">Enlaces</string>
-    <string name="about_link_github_user_title">Mis repositorios de GitHub</string>
-    <string name="about_link_github_user_desc">Revisa otros proyectos míos</string>
-    <string name="about_link_github_user_url">https://github.com/nesktf</string>
+    <string name="about_link_github_user_title">Repositorio en GitHub</string>
+    <string name="about_link_github_user_desc">Ver el código fuente y colaborar con el proyecto</string>
+    <string name="about_link_github_user_url">https://github.com/nesktf/guemaps</string>
     <string name="about_link_artist_title">Página de la artista del ícono</string>
     <string name="about_link_artist_desc">Ve a ver los dibujos bonitos que hace!</string>
     <string name="about_link_artist_url">https://www.instagram.com/luxxyxarts</string>
@@ -57,6 +57,9 @@
     <string name="about_link_api_tos_title">Términos de la API de MiRedBus</string>
     <string name="about_link_api_tos_desc">Términos y condiciones de uso para los servicios de MiRedBus</string>
     <string name="about_link_api_tos_url">https://salta.miredbus.com.ar/documentos/salta_terminosycondiciones.html</string>
+    <string name="about_link_privacy_title">Política de Privacidad</string>
+    <string name="about_link_privacy_desc">Conocé cómo Güemaps protege tu privacidad</string>
+    <string name="about_link_privacy_url">https://guemaps.app/privacy</string>
     <string name="about_donations_title">Donaciones</string>
     <string name="about_donations_desc">Si encontraste útil esta aplicación y quieres colaborar conmigo, puedes invitarme un café!\nEl dinero será reinvertido en mantener la aplicación y brindar mas funciones a los usuarios.</string>
     <string name="about_bmac_title">Invítame un café</string>

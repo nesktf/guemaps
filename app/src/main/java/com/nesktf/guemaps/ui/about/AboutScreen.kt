@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -129,11 +130,11 @@ fun AboutScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                val repoUrl = stringResource(id = R.string.about_github_repo_url)
+                val websiteUrl = stringResource(id = R.string.about_link_website_url)
                 Surface(
                     onClick = {
                         try {
-                            uriHandler.openUri(repoUrl)
+                            uriHandler.openUri(websiteUrl)
                         } catch (_: Exception) {}
                     },
                     shape = RoundedCornerShape(8.dp),
@@ -145,14 +146,14 @@ fun AboutScreen(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Code,
+                            imageVector = Icons.Default.Public,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = stringResource(id = R.string.about_github_repo_label),
+                            text = websiteUrl,
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary
@@ -273,6 +274,18 @@ fun AboutScreen(
                         title = stringResource(id = R.string.about_link_api_tos_title),
                         description = stringResource(id = R.string.about_link_api_tos_desc),
                         url = stringResource(id = R.string.about_link_api_tos_url),
+                        onOpenUrl = { url ->
+                            try {
+                                uriHandler.openUri(url)
+                            } catch (_: Exception) {}
+                        }
+                    )
+
+                    AboutLinkButton(
+                        icon = Icons.Default.PrivacyTip,
+                        title = stringResource(id = R.string.about_link_privacy_title),
+                        description = stringResource(id = R.string.about_link_privacy_desc),
+                        url = stringResource(id = R.string.about_link_privacy_url),
                         onOpenUrl = { url ->
                             try {
                                 uriHandler.openUri(url)
