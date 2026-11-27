@@ -10,6 +10,7 @@ import android.net.NetworkRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.GuemapsApplication
+import com.nesktf.guemaps.R
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.model.SellingPoint
 import com.nesktf.guemaps.data.remote.SaetaApiClient
@@ -24,10 +25,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class SellingPointFilter(val label: String) {
-    ALL("Todos"),
-    ATM("ATMs"),
-    COMMERCE("Comercios")
+enum class SellingPointFilter {
+    ALL,
+    ATM,
+    COMMERCE
 }
 
 private fun normalizeForSearch(text: String): String {
@@ -149,7 +150,8 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = error.localizedMessage ?: "Error al cargar puntos de venta"
+                        errorMessage = error.localizedMessage
+                            ?: getApplication<Application>().getString(R.string.selling_points_error_load)
                     )
                 }
             }
@@ -190,11 +192,12 @@ class SellingPointsViewModel(application: Application) : AndroidViewModel(applic
         Location.distanceBetween(userLoc.latitude, userLoc.longitude, pLat, pLon, results)
         val meters = results[0]
 
+        val app = getApplication<Application>()
         return if (meters < 1000) {
-            "A ${meters.toInt()} m de tu ubicación"
+            app.getString(R.string.selling_points_distance_meters, meters.toInt())
         } else {
             val km = meters / 1000.0
-            "A %.1f km de tu ubicación".format(km)
+            app.getString(R.string.selling_points_distance_km, km)
         }
     }
 

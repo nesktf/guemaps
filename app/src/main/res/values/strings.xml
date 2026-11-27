@@ -234,4 +234,37 @@
     <string name="incoming_preset_dialog_desc">¿Deseas cargar el ajuste \"%1$s\" con %2$d líneas? Se reemplazarán tus líneas activas actuales en el mapa.</string>
     <string name="incoming_preset_dialog_load_action">Cargar ajuste</string>
     <string name="incoming_preset_error_invalid">El enlace de ajuste compartido es inválido o está dañado.</string>
+
+    <!-- Map & Line Picker Messages -->
+    <string name="map_preset_error_empty_name">El nombre no puede estar vacío</string>
+    <string name="map_preset_error_no_lines">No hay líneas seleccionadas para guardar</string>
+    <string name="map_preset_error_duplicate">Ya existe un ajuste guardado con estas líneas: \"%1$s\"</string>
+    <string name="map_error_load_lines">Error al cargar líneas de colectivos</string>
+    <string name="map_error_max_lines">Máximo %1$d líneas permitidas al mismo tiempo</string>
+    <string name="map_error_load_route">Error al cargar recorrido</string>
+    <string name="map_no_stops_available">No hay paradas disponibles</string>
+    <string name="map_default_stop_name">Parada de colectivo</string>
+    <string name="map_stop_single_line">Línea %1$s</string>
+    <string name="map_stop_multiple_lines">Líneas: %1$s</string>
+    <string name="map_line_already_selected">La Línea %1$s ya está en el mapa</string>
+    <string name="map_line_limit_reached">Límite alcanzado (máximo %1$d colectivos)</string>
+    <string name="map_line_added">Línea %1$s agregada</string>
+    <string name="map_syncing_stops_progress">Sincronizando paradas offline (%1$d/%2$d)…</string>
+    <string name="line_picker_line_subtitle">%1$s • Línea %2$s</string>
+
+    <!-- Selling Points Messages -->
+    <string name="selling_points_error_load">Error al cargar puntos de venta</string>
+    <string name="selling_points_distance_meters">A %1$d m de tu ubicación</string>
+    <string name="selling_points_distance_km">A %1$.1f km de tu ubicación</string>
+    <string name="selling_points_user_location_title">Tu ubicación</string>
+    <string name="selling_points_user_location_accuracy">Precisión: ±%1$.0fm</string>
+
+    <!-- Balance Error Messages -->
+    <string name="balance_error_load_captcha">Error al cargar captcha: %1$s</string>
+    <string name="balance_error_check_connection">Verifique su conexión</string>
+    <string name="balance_error_empty_card">Ingrese un número de tarjeta</string>
+    <string name="balance_error_empty_captcha_input">Ingrese el código captcha de la imagen</string>
+    <string name="balance_error_check_default">Error al consultar saldo</string>
+    <string name="balance_error_connection">Error de conexión: %1$s</string>
+    <string name="balance_error_retry_later">Reintente más tarde</string>
 </resources>

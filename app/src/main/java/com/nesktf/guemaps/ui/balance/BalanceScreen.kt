@@ -263,7 +263,7 @@ fun BalanceScreen(
                         } else if (state.captchaBitmap != null) {
                             Image(
                                 bitmap = state.captchaBitmap!!.asImageBitmap(),
-                                contentDescription = "Captcha",
+                                contentDescription = stringResource(id = R.string.balance_captcha_desc),
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {

@@ -10,6 +10,7 @@ import android.net.NetworkRequest
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.GuemapsApplication
+import com.nesktf.guemaps.R
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.model.CardBalanceResponse
 import com.nesktf.guemaps.data.model.SavedCard
@@ -111,10 +112,14 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
                     )
                 }
             }.onFailure { error ->
+                val app = getApplication<Application>()
                 _uiState.update {
                     it.copy(
                         isLoadingCaptcha = false,
-                        errorMessage = "Error al cargar captcha: ${error.localizedMessage ?: "Verifique su conexión"}"
+                        errorMessage = app.getString(
+                            R.string.balance_error_load_captcha,
+                            error.localizedMessage ?: app.getString(R.string.balance_error_check_connection)
+                        )
                     )
                 }
             }
@@ -148,12 +153,13 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
 
     fun checkBalance() {
         val current = _uiState.value
+        val app = getApplication<Application>()
         if (current.cardNumber.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Ingrese un número de tarjeta") }
+            _uiState.update { it.copy(errorMessage = app.getString(R.string.balance_error_empty_card)) }
             return
         }
         if (current.captchaInput.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Ingrese el código captcha de la imagen") }
+            _uiState.update { it.copy(errorMessage = app.getString(R.string.balance_error_empty_captcha_input)) }
             return
         }
 
@@ -173,7 +179,7 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
                     loadRecentCards()
                     loadCaptcha()
                 } else {
-                    val errorMsg = response.getErrorMessage() ?: "Error al consultar saldo"
+                    val errorMsg = response.getErrorMessage() ?: app.getString(R.string.balance_error_check_default)
                     _uiState.update {
                         it.copy(
                             isCheckingBalance = false,
@@ -190,7 +196,10 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.update {
                     it.copy(
                         isCheckingBalance = false,
-                        errorMessage = "Error de conexión: ${error.localizedMessage ?: "Reintente más tarde"}"
+                        errorMessage = app.getString(
+                            R.string.balance_error_connection,
+                            error.localizedMessage ?: app.getString(R.string.balance_error_retry_later)
+                        )
                     )
                 }
             }

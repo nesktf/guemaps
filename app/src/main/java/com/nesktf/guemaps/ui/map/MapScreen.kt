@@ -1253,7 +1253,7 @@ fun MapScreen(
                                                             color = MaterialTheme.colorScheme.onSurface
                                                         )
                                                         Text(
-                                                            text = "${line.groupPath} • Línea ${line.codLinea}",
+                                                            text = stringResource(R.string.line_picker_line_subtitle, line.groupPath, line.codLinea),
                                                             style = MaterialTheme.typography.bodySmall,
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
@@ -1675,7 +1675,7 @@ fun BusLineItem(
                     }
                 }
                 Text(
-                    text = "${line.groupPath} • Línea ${line.codLinea}",
+                    text = stringResource(R.string.line_picker_line_subtitle, line.groupPath, line.codLinea),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1729,7 +1729,7 @@ fun BusStopItem(
                     modifier = Modifier.basicMarquee()
                 )
                 Text(
-                    text = line?.descripcion ?: "Línea ${stop.lineId}",
+                    text = line?.descripcion ?: stringResource(R.string.map_stop_single_line, stop.lineId),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

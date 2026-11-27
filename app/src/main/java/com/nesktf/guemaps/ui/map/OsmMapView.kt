@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.nesktf.guemaps.R
 import com.nesktf.guemaps.data.model.ActiveLineData
 import com.nesktf.guemaps.data.model.BusLiveDetails
 import com.nesktf.guemaps.data.model.BusNode
@@ -539,10 +540,14 @@ class FastStopsOverlay(
         }
 
         if (closestStop != null) {
-            val stopName = closestStop.name.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
+            val stopName = closestStop.name.takeIf { it.isNotBlank() }
+                ?: context.getString(R.string.map_default_stop_name)
             val linesText = if (closestStop.lineNames.isNotEmpty()) {
-                if (closestStop.lineNames.size == 1) "Línea ${closestStop.lineNames.first()}"
-                else "Líneas: ${closestStop.lineNames.joinToString(", ")}"
+                if (closestStop.lineNames.size == 1) {
+                    context.getString(R.string.map_stop_single_line, closestStop.lineNames.first())
+                } else {
+                    context.getString(R.string.map_stop_multiple_lines, closestStop.lineNames.joinToString(", "))
+                }
             } else ""
             val msg = if (linesText.isNotBlank()) "$stopName\n$linesText" else stopName
 

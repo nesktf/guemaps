@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nesktf.guemaps.GuemapsApplication
+import com.nesktf.guemaps.R
 import com.nesktf.guemaps.data.local.GuemapsDatabase
 import com.nesktf.guemaps.data.local.NewsImageCache
 import com.nesktf.guemaps.data.model.NewsArticle
@@ -66,7 +67,12 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = if (it.articles.isEmpty()) "No se pudieron cargar las noticias: ${err.localizedMessage}" else null
+                            errorMessage = if (it.articles.isEmpty()) {
+                                getApplication<Application>().getString(
+                                    R.string.news_error_format,
+                                    err.localizedMessage ?: ""
+                                )
+                            } else null
                         )
                     }
                     _unreadCount.value = repository.getUnreadCount()

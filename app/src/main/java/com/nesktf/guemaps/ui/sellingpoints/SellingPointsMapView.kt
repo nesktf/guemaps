@@ -284,8 +284,10 @@ fun SellingPointsMapView(
                 position = GeoPoint(userLocation.latitude, userLocation.longitude)
                 icon = userDrawable
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                title = "Tu ubicación"
-                snippet = if (userLocation.hasAccuracy()) "Precisión: ±%.0fm".format(userLocation.accuracy) else null
+                title = context.getString(R.string.selling_points_user_location_title)
+                snippet = if (userLocation.hasAccuracy()) {
+                    context.getString(R.string.selling_points_user_location_accuracy, userLocation.accuracy)
+                } else null
             }
             userLocationFolder.add(userMarker)
         }

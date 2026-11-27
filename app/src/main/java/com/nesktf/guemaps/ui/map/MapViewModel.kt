@@ -169,19 +169,22 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveCurrentPreset(name: String): Result<BusPreset> {
+        val app = getApplication<Application>()
         val trimmedName = name.trim()
         if (trimmedName.isEmpty()) {
-            return Result.failure(IllegalArgumentException("El nombre no puede estar vacío"))
+            return Result.failure(IllegalArgumentException(app.getString(R.string.map_preset_error_empty_name)))
         }
         val currentLines = _uiState.value.selectedLines
         if (currentLines.isEmpty()) {
-            return Result.failure(IllegalStateException("No hay líneas seleccionadas para guardar"))
+            return Result.failure(IllegalStateException(app.getString(R.string.map_preset_error_no_lines)))
         }
 
         val canonicalHash = computeLineCodesHash(currentLines)
         val existingPreset = _uiState.value.presets.find { it.lineCodesHash == canonicalHash }
         if (existingPreset != null) {
-            return Result.failure(IllegalStateException("Ya existe un ajuste guardado con estas líneas: \"${existingPreset.name}\""))
+            return Result.failure(
+                IllegalStateException(app.getString(R.string.map_preset_error_duplicate, existingPreset.name))
+            )
         }
 
         val newPreset = BusPreset(
@@ -510,7 +513,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isLoadingGroups = false,
-                        errorMessage = error.localizedMessage ?: "Error al cargar líneas de colectivos"
+                        errorMessage = error.localizedMessage
+                            ?: getApplication<Application>().getString(R.string.map_error_load_lines)
                     )
                 }
             }
@@ -569,7 +573,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             }
         } else {
             if (state.selectedLines.size >= MAX_SELECTED_LINES) {
-                _uiState.update { it.copy(errorMessage = "Máximo $MAX_SELECTED_LINES líneas permitidas al mismo tiempo") }
+                _uiState.update {
+                    it.copy(
+                        errorMessage = getApplication<Application>().getString(
+                            R.string.map_error_max_lines,
+                            MAX_SELECTED_LINES
+                        )
+                    )
+                }
                 return
             }
 
@@ -650,7 +661,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     } else state.activeLines
                     state.copy(
                         activeLines = updatedMap,
-                        errorMessage = error.localizedMessage ?: "Error al cargar recorrido"
+                        errorMessage = error.localizedMessage
+                            ?: getApplication<Application>().getString(R.string.map_error_load_route)
                     )
                 }
             }
@@ -887,11 +899,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectNearestStopToUser() {
+        val app = getApplication<Application>()
         val userLoc = _uiState.value.userLocation ?: return
         val activeLinesList = _uiState.value.activeLines.values.toList()
         val allStops = clusterBusStops(activeLinesList, _uiState.value.routeNodes)
         if (allStops.isEmpty()) {
-            showStopToast("No hay paradas disponibles")
+            showStopToast(app.getString(R.string.map_no_stops_available))
             return
         }
 
@@ -902,10 +915,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (nearest != null) {
             selectReferenceStop(nearest)
-            val stopName = nearest.name.takeIf { it.isNotBlank() } ?: "Parada de colectivo"
+            val stopName = nearest.name.takeIf { it.isNotBlank() }
+                ?: app.getString(R.string.map_default_stop_name)
             val linesText = if (nearest.lineNames.isNotEmpty()) {
-                if (nearest.lineNames.size == 1) "Línea ${nearest.lineNames.first()}"
-                else "Líneas: ${nearest.lineNames.joinToString(", ")}"
+                if (nearest.lineNames.size == 1) {
+                    app.getString(R.string.map_stop_single_line, nearest.lineNames.first())
+                } else {
+                    app.getString(R.string.map_stop_multiple_lines, nearest.lineNames.joinToString(", "))
+                }
             } else ""
             val msg = if (linesText.isNotBlank()) "$stopName\n$linesText" else stopName
             showStopToast(msg)
@@ -1063,26 +1080,27 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addBusLineFromStop(stop: BusStopRecord): AddStopResult {
+        val app = getApplication<Application>()
         val state = _uiState.value
         val line = state.flatLines.find { it.codLinea == stop.lineId }
             ?: return AddStopResult.NotFound
 
         val isAlreadySelected = state.selectedLines.any { it.codLinea == line.codLinea }
         if (isAlreadySelected) {
-            val msg = "La Línea ${line.nombreCorto} ya está en el mapa"
+            val msg = app.getString(R.string.map_line_already_selected, line.nombreCorto)
             _uiState.update { it.copy(feedbackMessage = msg, shouldFitRouteBounds = false) }
             return AddStopResult.AlreadySelected(line)
         }
 
         if (state.selectedLines.size >= MAX_SELECTED_LINES) {
-            val msg = "Límite alcanzado (máximo $MAX_SELECTED_LINES colectivos)"
+            val msg = app.getString(R.string.map_line_limit_reached, MAX_SELECTED_LINES)
             _uiState.update { it.copy(feedbackMessage = msg) }
             return AddStopResult.LimitReached
         }
 
         // Add line
         toggleLineSelection(line)
-        val msg = "Línea ${line.nombreCorto} agregada"
+        val msg = app.getString(R.string.map_line_added, line.nombreCorto)
         _uiState.update { it.copy(feedbackMessage = msg, shouldFitRouteBounds = false) }
         return AddStopResult.Added(line)
     }
@@ -1102,17 +1120,18 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         val cachedCount = repository.getCachedRoutesCount()
         if (cachedCount >= lines.size) return // All routes already cached and stops indexed
 
+        val app = getApplication<Application>()
         syncJob = viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isSyncingStops = true,
-                    syncProgressText = "Sincronizando paradas offline ($cachedCount/${lines.size})..."
+                    syncProgressText = app.getString(R.string.map_syncing_stops_progress, cachedCount, lines.size)
                 )
             }
             repository.syncAllBusRoutes(lines) { current, total ->
                 _uiState.update {
                     it.copy(
-                        syncProgressText = "Sincronizando paradas offline ($current/$total)..."
+                        syncProgressText = app.getString(R.string.map_syncing_stops_progress, current, total)
                     )
                 }
             }
