@@ -31,14 +31,19 @@ class InMemoryCookieJar : CookieJar {
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         val host = url.host
         val current = cookieStore.getOrPut(host) { mutableListOf() }
-        cookies.forEach { newCookie ->
-            current.removeAll { it.name == newCookie.name }
-            current.add(newCookie)
+        synchronized(current) {
+            cookies.forEach { newCookie ->
+                current.removeAll { it.name == newCookie.name }
+                current.add(newCookie)
+            }
         }
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        return cookieStore[url.host]?.filter { !it.hasExpired() } ?: emptyList()
+        val current = cookieStore[url.host] ?: return emptyList()
+        return synchronized(current) {
+            current.filter { !it.hasExpired() }
+        }
     }
 
     fun clear() {
@@ -155,18 +160,19 @@ class SaetaApiClient(
                 .get()
                 .build()
 
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(IOException("Failed to load captcha image: ${response.code}"))
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(IOException("Failed to load captcha image: ${response.code}"))
+                }
+
+                val inputStream = response.body?.byteStream()
+                    ?: return@withContext Result.failure(IOException("Empty captcha body"))
+
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                    ?: return@withContext Result.failure(IOException("Failed to decode captcha bitmap"))
+
+                Result.success(bitmap)
             }
-
-            val inputStream = response.body?.byteStream()
-                ?: return@withContext Result.failure(IOException("Empty captcha body"))
-
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-                ?: return@withContext Result.failure(IOException("Failed to decode captcha bitmap"))
-
-            Result.success(bitmap)
         } catch (e: Exception) {
             Result.failure(e)
         }

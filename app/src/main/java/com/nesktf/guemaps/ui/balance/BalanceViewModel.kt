@@ -17,6 +17,7 @@ import com.nesktf.guemaps.data.model.TarifaItem
 import com.nesktf.guemaps.data.remote.SaetaApiClient
 import com.nesktf.guemaps.data.repository.BusRepository
 import com.nesktf.guemaps.data.repository.CardRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +46,7 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
     private val busRepository: BusRepository
     private val connectivityManager = application.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var captchaJob: Job? = null
 
     private val _uiState = MutableStateFlow(BalanceUiState())
     val uiState: StateFlow<BalanceUiState> = _uiState.asStateFlow()
@@ -55,7 +57,6 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
         busRepository = app?.busRepository ?: BusRepository(SaetaApiClient(), GuemapsDatabase(application))
         loadRecentCards()
         loadFavoriteCards()
-        loadCaptcha()
         loadTarifas()
         setupNetworkCallback()
     }
@@ -91,9 +92,16 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun loadCaptcha() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingCaptcha = true, captchaInput = "") }
+    fun loadCaptcha(clearError: Boolean = false) {
+        captchaJob?.cancel()
+        captchaJob = viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoadingCaptcha = true,
+                    captchaInput = "",
+                    errorMessage = if (clearError) null else it.errorMessage
+                )
+            }
             val result = repository.getCaptcha()
             result.onSuccess { bitmap ->
                 _uiState.update {
@@ -206,6 +214,7 @@ class BalanceViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         super.onCleared()
+        captchaJob?.cancel()
         networkCallback?.let {
             try { connectivityManager.unregisterNetworkCallback(it) } catch (_: Exception) {}
             networkCallback = null
